@@ -992,7 +992,7 @@ function openArtist(a){
   <div class="kv"><div><b>${fmtN(g.ap[a])}</b><span>plays</span></div><div><b>${fmtN(g.am[a]/60)}</b><span>minutes listened</span></div><div><b>${fmtN(songs.length)}</b><span>different songs</span></div>
   <div><b>${(100*g.ap[a]/g.plays).toFixed(1)}%</b><span>of all your plays</span></div><div><b>${fmtDate(DB.aFirst[a])}</b><span>first ever play</span></div><div><b>${fmtN(songs.reduce((s,k)=>s+g.ssk[k],0))}</b><span>quick skips</span></div></div>
   <div><h3>Plays per month</h3>${monthlyFor(i=>DB.songs[DB.s[i]].a===a,lo,hi)}</div>
-  <div><h3>Their songs you played</h3><div class="list">${songs.slice(0,30).map((k,i)=>songRow(k,i,max,'plays')).join('')}</div></div>`);
+  <div><h3>Their songs you played (${fmtN(songs.length)})</h3><div class="list" id="artistSongs">${songs.slice(0,30).map((k,i)=>songRow(k,i,max,'plays')).join('')}</div>${songs.length>30?`<button class="btn ghost more" type="button" data-artistall="${a}">Show all ${fmtN(songs.length)} songs</button>`:''}</div>`);
   loadAvatar(a);
 }
 let lastFocus=null;
@@ -1063,7 +1063,7 @@ document.addEventListener('click',e=>{
     box.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));
     if(tip.dataset.i!==undefined){const b=box.querySelectorAll('.bar')[+tip.dataset.i];if(b)b.classList.add('sel')}else tip.classList.add('sel');
     return}
-  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-look],[data-card],#cardShare,#cardPhoto,#cardPhotoDel,[data-go],[data-g],[data-v],#importBtn,#monthsAll,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
+  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-look],[data-card],[data-artistall],#cardShare,#cardPhoto,#cardPhotoDel,[data-go],[data-g],[data-v],#importBtn,#monthsAll,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
   if(e.target.id==='sheet'){closeSheet();return}
   if(!el)return;
   if(el.hasAttribute('data-close'))return closeSheet();
@@ -1073,6 +1073,7 @@ document.addEventListener('click',e=>{
   if(el.dataset.look){setLook(el.dataset.look);return render()}
   if(el.dataset.period!==undefined){ST.period=+el.dataset.period;return render()}
   if(el.dataset.card!==undefined)return openCard(+el.dataset.card);
+  if(el.dataset.artistall!==undefined){const a=+el.dataset.artistall,g=AGG,songs=g.songIdx.filter(k=>DB.songs[k].a===a).sort((x,y)=>g.sp[y]-g.sp[x]),max=g.sp[songs[0]]||1,l=$('#artistSongs');if(l)l.innerHTML=songs.map((k,i)=>songRow(k,i,max,'plays')).join('');el.remove();return}
   if(el.id==='cardShare')return shareCard();
   if(el.id==='cardPhoto'){const fi=$('#photoFile');if(fi)fi.click();return}
   if(el.id==='cardPhotoDel'&&CARD){const a=CARD.a;photoSet(CARD.name,null).then(()=>openCard(a));return}
