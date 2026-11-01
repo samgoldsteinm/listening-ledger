@@ -228,7 +228,7 @@ select,input[type=search],input[type=date]{font-size:16px}
   <div id="view"></div>
 </div></main>
 <nav class="bottom" id="bottomNav" aria-label="Main"><div class="in"></div></nav>
-<input type="file" id="file" accept=".zip,.json,.html,application/zip,application/json,text/html" hidden>
+<input type="file" id="file" multiple accept=".zip,.json,.html,application/zip,application/json,text/html" hidden>
 <div id="sheet" class="sheet" hidden></div>
 
 <script>
@@ -258,34 +258,38 @@ function parseDate(str){
   if(m){mo=MON[m[1].toLowerCase()];d=+m[2];y=+m[3];h=+m[4];mi=+m[5];se=+(m[6]||0);ap=m[7]}
   else{m=x.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?\s+(\d{4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp]\.?[Mm]\.?)?/);
     if(m){d=+m[1];mo=MON[m[2].toLowerCase()];y=+m[3];h=+m[4];mi=+m[5];se=+(m[6]||0);ap=m[7]}}
-  if(mo===undefined)return Date.parse(x);
+  if(mo===undefined)return /\d{1,2}:\d{2}/.test(x)?Date.parse(x):NaN;
   if(ap){const pm=/p/i.test(ap);if(pm&&h<12)h+=12;if(!pm&&h===12)h=0}
   return new Date(y,mo,d,h,mi,se).getTime();
 }
 const strip=s=>s.replace(/<[^>]*>/g,'');
 const decode=s=>s.replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').replace(/&#39;|&#x27;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n)).replace(/&amp;/g,'&');
 const isMusicEntry=e=>e.header==='YouTube Music'||(Array.isArray(e.products)&&e.products.includes('YouTube Music'));
-function parseJSON(text){
+function parseJSON(text,st={total:0,music:0,removed:0,badDate:0}){
   const arr=JSON.parse(text),out=[];
   for(const e of arr){
-    if(!isMusicEntry(e)||!e.title)continue;
-    const title=e.title.replace(/^(Watched|Listened to)\s+/,'').trim();
-    if(!title||/^https?:\/\//.test(title))continue;
+    st.total++;if(!isMusicEntry(e))continue;st.music++;
+    const title=(e.title||'').replace(/^(Watched|Listened to)\s+/,'').trim();
+    if(!title||/^https?:\/\//.test(title)){st.removed++;continue}
+    const time=Date.parse(e.time);if(!isFinite(time)){st.badDate++;continue}
     const ch=e.subtitles&&e.subtitles[0]?e.subtitles[0].name:'';
-    out.push({time:Date.parse(e.time),title,url:e.titleUrl||'',artist:cleanArtist(ch)});
+    out.push({time,title,url:e.titleUrl||'',artist:cleanArtist(ch)});
   }
   return out;
 }
-function parseHTML(html){
+function parseHTML(html,st={total:0,music:0,removed:0,badDate:0}){
   const out=[],parts=html.split('outer-cell');
   for(let i=1;i<parts.length;i++){
     const p=parts[i],hm=p.match(/mdl-typography--title">([\s\S]*?)<\/p>/);if(!hm)continue;
-    if(decode(strip(hm[1])).trim()!=='YouTube Music')continue;
-    const cm=p.match(/content-cell[^"]*mdl-typography--body-1">([\s\S]*?)<\/div>/);if(!cm)continue;
-    const c=cm[1],links=[...c.matchAll(/<a href="([^"]*)">([\s\S]*?)<\/a>/g)];if(!links.length)continue;
-    const title=decode(strip(links[0][2])).trim();if(!title||/^https?:\/\//.test(title))continue;
-    const segs=c.split(/<br\s*\/?>/).map(x=>decode(strip(x)).trim()).filter(Boolean);
-    out.push({time:parseDate(segs[segs.length-1]),title,url:decode(links[0][1]),artist:cleanArtist(links[1]?decode(strip(links[1][2])):'')});
+    st.total++;if(decode(strip(hm[1])).trim()!=='YouTube Music')continue;st.music++;
+    const cm=p.match(/content-cell[^"]*mdl-typography--body-1">([\s\S]*?)<\/div>/);if(!cm){st.badDate++;continue}
+    const c=cm[1],links=[...c.matchAll(/<a href="([^"]*)">([\s\S]*?)<\/a>/g)];if(!links.length){st.removed++;continue}
+    const title=decode(strip(links[0][2])).trim();if(!title||/^https?:\/\//.test(title)){st.removed++;continue}
+    // the date is normally the last line, but search every line so extra lines can't hide it
+    const segs=c.split(/<br\s*\/?>/).map(x=>decode(strip(x)).trim()).filter(Boolean);let time=NaN;
+    for(let j=segs.length-1;j>=0&&!isFinite(time);j--)time=parseDate(segs[j]);
+    if(!isFinite(time)){st.badDate++;continue}
+    out.push({time,title,url:decode(links[0][1]),artist:cleanArtist(links[1]?decode(strip(links[1][2])):'')});
   }
   return out;
 }
@@ -293,7 +297,8 @@ function parseHTML(html){
 /* ---------- Building the dataset ---------- */
 function build(entries,meta){
   entries=entries.filter(e=>isFinite(e.time)).sort((a,b)=>a.time-b.time);
-  const ded=[];for(const e of entries){const p=ded[ded.length-1];if(p&&p.time===e.time&&p.title===e.title)continue;ded.push(e)}
+  // drop duplicates (same song in the same second), so overlapping exports never double count
+  const seen=new Set(),ded=[];for(const e of entries){const key=Math.floor(e.time/1000)+'\u0001'+e.title;if(seen.has(key))continue;seen.add(key);ded.push(e)}
   const aI=new Map(),artists=[],sI=new Map(),songs=[],n=ded.length,t=new Float64Array(n),s=new Int32Array(n);
   ded.forEach((e,i)=>{let a=aI.get(e.artist);if(a===undefined){a=artists.length;artists.push(e.artist);aI.set(e.artist,a)}
     const key=e.title+'\u0001'+a;let k=sI.get(key);if(k===undefined){k=songs.length;songs.push({title:e.title,a,url:e.url||''});sI.set(key,k)}
@@ -352,7 +357,7 @@ function sampleEntries(){
 
 /* ---------- Storage (this browser only) ---------- */
 function idb(){return new Promise((res,rej)=>{try{const q=indexedDB.open('listening-ledger',1);q.onupgradeneeded=()=>q.result.createObjectStore('kv');q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)}catch(e){rej(e)}})}
-async function saveDB(){try{const db=await idb();db.transaction('kv','readwrite').objectStore('kv').put({songs:DB.songs,artists:DB.artists,t:DB.t,s:DB.s,source:DB.source,imported:DB.imported},'current')}catch(e){}}
+async function saveDB(){try{const db=await idb();db.transaction('kv','readwrite').objectStore('kv').put({songs:DB.songs,artists:DB.artists,t:DB.t,s:DB.s,source:DB.source,imported:DB.imported,report:DB.report||null},'current')}catch(e){}}
 async function loadDB(){try{const db=await idb();return await new Promise(res=>{const q=db.transaction('kv').objectStore('kv').get('current');q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})}catch(e){return null}}
 async function clearDB(){try{const db=await idb();db.transaction('kv','readwrite').objectStore('kv').delete('current')}catch(e){}}
 
@@ -655,7 +660,11 @@ function openMonth(k){
   ${st.newA.length?`<div><h3>Artists you heard for the first time</h3><p class="namelist">${st.newA.slice(0,20).map(a=>esc(DB.artists[a])).join(', ')}${st.newA.length>20?` and ${st.newA.length-20} more`:''}</p></div>`:''}`);
 }
 function vImport(){
-  const mine=DB&&!DB.isSample&&DB.t.length?`<div class="panel"><h2>Your history</h2><p class="fine">${fmtN(DB.t.length)} plays from ${fmtDate(DB.t[0])} to ${fmtDate(DB.t[DB.t.length-1])}, imported from ${esc(DB.source||"your Takeout file")}. Import a newer export below anytime to refresh it.</p></div>`:"";
+  const R=DB&&!DB.isSample?DB.report:null;
+  const rep=R?`<div class="panel"><h2>Last import</h2><p class="fine">${fmtDate(R.at)} · ${R.files.map(esc).join(', ')}${R.skippedZips?` · ${R.skippedZips} other ${R.skippedZips===1?'zip had':'zips had'} no history`:''}</p>
+    <div class="kv"><div><b>${fmtN(R.total)}</b><span>history entries in the file</span></div><div><b>${fmtN(R.music)}</b><span>were YouTube Music</span></div><div><b>${fmtN(R.read)}</b><span>plays read</span></div>
+    <div><b>${fmtN(R.added)}</b><span>new plays added</span></div><div><b>${fmtN(R.dupes)}</b><span>already here (skipped)</span></div><div><b>${fmtN(R.removed+R.badDate)}</b><span>unreadable (${fmtN(R.removed)} removed songs, ${fmtN(R.badDate)} no date)</span></div></div></div>`:'';
+  const mine=DB&&!DB.isSample&&DB.t.length?`<div class="panel"><h2>Your history</h2><p class="fine">${fmtN(DB.t.length)} plays from ${fmtDate(DB.t[0])} to ${fmtDate(DB.t[DB.t.length-1])}. New imports are added to what's already here and duplicates are skipped, so importing a smaller or older export never removes plays. If an export has fewer plays than you expect, check YouTube's auto-delete setting at myactivity.google.com under YouTube History. When it's on, Google permanently removes older history.</p></div>`+rep:"";
   const light=document.documentElement.classList.contains("light");
   const look=`<div class="panel"><h2>Appearance</h2><div class="chips" role="group" aria-label="Appearance"><button class="chip" type="button" data-look="dark" aria-pressed="${!light}">Dark</button><button class="chip" type="button" data-look="light" aria-pressed="${light}">Light</button></div></div>`;
   return mine+look+`<div class="panel how"><h2>${DB&&!DB.isSample?"Refresh":"Bring in"} your YouTube Music history</h2>
@@ -668,7 +677,7 @@ function vImport(){
     <li>Click <b>Next step</b>, keep <b>Export once</b> and .zip, then <b>Create export</b>. Google emails you a download link, usually within minutes to a few hours.</li>
     <li>Download the .zip and drop it below. You can also drop the <b>watch-history.json</b> or <b>watch-history.html</b> file from inside it.</li>
   </ol></div>
-  <div class="drop" id="drop"><b>Drop your Takeout .zip here</b><span class="fine">or</span><button class="btn" type="button" id="pick">Choose file</button>
+  <div class="drop" id="drop"><b>Drop your Takeout .zip here</b><span class="fine">If Takeout split it into several zips, choose them all at once.</span><span class="fine">or</span><button class="btn" type="button" id="pick">Choose file</button>
   <span class="fine">Processed entirely in this browser. Nothing is uploaded anywhere. Your imported history is saved in this browser so you don't have to import again.</span></div>
   <div class="panel how"><h2>How the numbers work</h2>
   <p>Takeout records when each song started, not how long it played. Minutes are estimated from the gap until your next song, capped at that song's typical length, so skipped songs only count the seconds you heard. A play followed by another within 30 seconds counts as a quick skip. Plays made while your YouTube history was paused aren't in the export. Refresh by requesting a new Takeout export whenever you like.</p>
@@ -1013,21 +1022,30 @@ function render(){
 function go(v){v=ALIAS[v]||v;ST.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();window.scrollTo(0,0)}
 function setStatus(html,isErr){$('#notice').innerHTML=`<div class="notice${isErr?' err':''}"><span class="grow">${html}</span></div>`}
 
-async function handleFile(file){
-  setStatus(`Reading <b>${esc(file.name)}</b>… large exports can take a moment.`);
+function entriesFromDB(){const out=[];if(!DB||DB.isSample)return out;for(let i=0;i<DB.t.length;i++){const so=DB.songs[DB.s[i]];out.push({time:DB.t[i],title:so.title,url:so.url,artist:DB.artists[so.a]})}return out}
+async function handleFiles(list){
+  const files=[...(list||[])];if(!files.length)return;
+  setStatus(`Reading ${files.length>1?files.length+' files':'<b>'+esc(files[0].name)+'</b>'}… large exports can take a moment.`);
   await new Promise(r=>setTimeout(r,30));
   try{
-    let text,kind;
-    if(/\.zip$/i.test(file.name)||/zip/.test(file.type)){
-      if(typeof JSZip==='undefined')throw new Error("The zip reader didn't load. Unzip the export and drop watch-history.json instead.");
-      const zip=await JSZip.loadAsync(file),c=Object.keys(zip.files).filter(p=>/watch-history\.(json|html)$/i.test(p));
-      if(!c.length)throw new Error("This zip has no watch-history file. If Takeout split your export into several zips, try the others, and check that “history” was ticked under YouTube and YouTube Music.");
-      const p=c.find(x=>/json$/i.test(x))||c[0];text=await zip.file(p).async('string');kind=/json$/i.test(p)?'json':'html';
-    }else{text=await file.text();kind=/^\s*[\[{]/.test(text)?'json':'html'}
-    const entries=kind==='json'?parseJSON(text):parseHTML(text);
-    if(!entries.length)throw new Error("No YouTube Music plays were found in that file. Make sure it's watch-history from the YouTube and YouTube Music section and that you listened while signed in with history on.");
-    DB=build(entries,{source:file.name.replace(/\.(zip|json|html)$/i,''),imported:Date.now(),isSample:false});
-    saveDB();ST.range='all';rangeOptions();go('overview');
+    const st={total:0,music:0,removed:0,badDate:0},entries=[],used=[];let zipsWithout=0;
+    for(const file of files){
+      if(/\.zip$/i.test(file.name)||/zip/.test(file.type)){
+        if(typeof JSZip==='undefined')throw new Error("The zip reader didn't load. Unzip the export and choose watch-history.json or watch-history.html instead.");
+        const zip=await JSZip.loadAsync(file),c=Object.keys(zip.files).filter(p=>/watch-history\.(json|html)$/i.test(p));
+        if(!c.length){zipsWithout++;continue}
+        const p=c.find(x=>/json$/i.test(x))||c[0],text=await zip.file(p).async('string');
+        for(const e of(/json$/i.test(p)?parseJSON(text,st):parseHTML(text,st)))entries.push(e);
+        used.push(`${file.name} (${p.split('/').pop()})`);
+      }else{const text=await file.text();for(const e of(/^\s*[\[{]/.test(text)?parseJSON(text,st):parseHTML(text,st)))entries.push(e);used.push(file.name)}
+    }
+    if(!used.length)throw new Error(files.length>1?`None of these ${files.length} files contains your watch history. Check that “history” was ticked under YouTube and YouTube Music when you made the export.`:"This zip has no watch-history file. When Takeout splits a big export into several zips (…-001.zip, …-002.zip), your history is in only one of them. Choose all the parts at once, or the one that has YouTube and YouTube Music → history inside.");
+    if(!entries.length)throw new Error(`The history file was read (${fmtN(st.total)} entries), but none were YouTube Music plays. Music played in the regular YouTube app is labeled YouTube, not YouTube Music. Also make sure the export is from the Google account you use for YouTube Music.`);
+    const before=DB&&!DB.isSample?DB.t.length:0;
+    const next=build(entriesFromDB().concat(entries),{source:before||files.length>1?'Combined history':files[0].name.replace(/\.(zip|json|html)$/i,''),imported:Date.now(),isSample:false});
+    const added=next.t.length-before;
+    next.report={at:Date.now(),files:used,skippedZips:zipsWithout,total:st.total,music:st.music,removed:st.removed,badDate:st.badDate,read:entries.length,added,dupes:entries.length-added,before};
+    DB=next;saveDB();ST.range='all';rangeOptions();go('data');
   }catch(err){setStatus(esc(err.message||String(err)),true)}
 }
 
@@ -1079,7 +1097,7 @@ document.addEventListener('change',e=>{
   if(e.target.id==='artistSort'){ST.artistSort=e.target.value;ST.artistLimit=50;render()}
   if(e.target.id==='photoFile'&&e.target.files[0]&&CARD){const a=CARD.a,nm=CARD.name,f=e.target.files[0];const st=$('#cardStatus');if(st){st.hidden=false;st.textContent='Adding your photo…'}
     fileToJpeg(f).then(b=>photoSet(nm,b)).then(ok=>{if(ok)openCard(a);else if(st)st.textContent="That photo couldn't be saved. Try a different image."}).catch(()=>{if(st)st.textContent="That image couldn't be opened. Try a JPEG or PNG."});e.target.value='';return}
-  if(e.target.id==='file'&&e.target.files[0]){handleFile(e.target.files[0]);e.target.value=''}
+  if(e.target.id==='file'&&e.target.files.length){handleFiles(e.target.files);e.target.value=''}
 });
 let qt;document.addEventListener('input',e=>{
   if(e.target.id!=='q'&&e.target.id!=='aq')return;const id=e.target.id;
@@ -1088,7 +1106,7 @@ let qt;document.addEventListener('input',e=>{
 });
 ['dragover','dragenter'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();const d=$('#drop');if(d)d.classList.add('over')}));
 ['dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{const d=$('#drop');if(d)d.classList.remove('over')}));
-document.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)handleFile(f)});
+document.addEventListener('drop',e=>{e.preventDefault();if(e.dataTransfer&&e.dataTransfer.files.length)handleFiles(e.dataTransfer.files)});
 window.addEventListener('hashchange',()=>{const v=ALIAS[location.hash.slice(1)]||location.hash.slice(1);if(v&&v!==ST.view&&VIEWS.includes(v)){ST.view=v;render()}});
 
 /* ---------- Boot ---------- */
