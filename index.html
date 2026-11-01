@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Listening Ledger</title>
 <meta name="description" content="Deep stats on your YouTube Music listening from your Google Takeout export.">
-<meta name="theme-color" content="#F7F7F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#030303" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#030303" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -28,18 +28,19 @@ img{max-width:100%}
 <style>
 /* Layout: a single scrolling ledger — sticky header with range + import, tabbed views, list rows that open a detail sheet */
 :root{
-  --bg:#F7F7F7; --surface:#FFFFFF; --ink:#0F0F0F; --muted:#606060; --line:#E3E3E3;
-  --accent:#E00000; --accent-soft:#FFE6E6; --warm:#A50E0E; --on-accent:#FFFFFF;
+  --bg:#030303; --surface:#181818; --ink:#FFFFFF; --muted:#AAAAAA; --line:#2C2C2C;
+  --accent:#FF0000; --accent-soft:#3B0A0A; --warm:#FF8A80; --on-accent:#FFFFFF; color-scheme:dark;
   --display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --body:"Instrument Sans", "Segoe UI", system-ui, sans-serif;
   --mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#030303; --surface:#181818; --ink:#FFFFFF; --muted:#AAAAAA; --line:#2C2C2C;
-  --accent:#FF0000; --accent-soft:#3B0A0A; --warm:#FF8A80; --on-accent:#FFFFFF; color-scheme:dark } }
 :root[data-theme="dark"]{
   --bg:#030303; --surface:#181818; --ink:#FFFFFF; --muted:#AAAAAA; --line:#2C2C2C;
   --accent:#FF0000; --accent-soft:#3B0A0A; --warm:#FF8A80; --on-accent:#FFFFFF; color-scheme:dark }
+/* Light mode only when chosen on the Data page */
+:root.light{
+  --bg:#F7F7F7; --surface:#FFFFFF; --ink:#0F0F0F; --muted:#606060; --line:#E3E3E3;
+  --accent:#E00000; --accent-soft:#FFE6E6; --warm:#A50E0E; --on-accent:#FFFFFF; color-scheme:light }
 
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);}
@@ -654,7 +655,9 @@ function openMonth(k){
 }
 function vImport(){
   const mine=DB&&!DB.isSample&&DB.t.length?`<div class="panel"><h2>Your history</h2><p class="fine">${fmtN(DB.t.length)} plays from ${fmtDate(DB.t[0])} to ${fmtDate(DB.t[DB.t.length-1])}, imported from ${esc(DB.source||"your Takeout file")}. Import a newer export below anytime to refresh it.</p></div>`:"";
-  return mine+`<div class="panel how"><h2>${DB&&!DB.isSample?"Refresh":"Bring in"} your YouTube Music history</h2>
+  const light=document.documentElement.classList.contains("light");
+  const look=`<div class="panel"><h2>Appearance</h2><div class="chips" role="group" aria-label="Appearance"><button class="chip" type="button" data-look="dark" aria-pressed="${!light}">Dark</button><button class="chip" type="button" data-look="light" aria-pressed="${light}">Light</button></div></div>`;
+  return mine+look+`<div class="panel how"><h2>${DB&&!DB.isSample?"Refresh":"Bring in"} your YouTube Music history</h2>
   <p>YouTube Music has no public API for listening history, so no app can sign in and read it directly. Google does let you export it yourself through Google Takeout, and that export has every play with its date and time. Import it here and every stat on this page becomes yours.</p>
   <ol>
     <li>Open <a href="https://takeout.google.com" target="_blank" rel="noopener">takeout.google.com</a> signed in to the Google account you use for YouTube Music.</li>
@@ -1002,6 +1005,12 @@ async function handleFile(file){
   }catch(err){setStatus(esc(err.message||String(err)),true)}
 }
 
+/* ---------- Appearance (dark by default) ---------- */
+function setLook(v){const light=v==='light';document.documentElement.classList.toggle('light',light);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m=>m.content=light?'#F7F7F7':'#030303');
+  try{localStorage.setItem('ll-look',v)}catch(e){}}
+try{if(localStorage.getItem('ll-look')==='light')setLook('light')}catch(e){}
+
 /* ---------- Events ---------- */
 document.addEventListener('click',e=>{
   const tip=e.target.closest('.chartbox [data-tip]');
@@ -1010,13 +1019,14 @@ document.addEventListener('click',e=>{
     box.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));
     if(tip.dataset.i!==undefined){const b=box.querySelectorAll('.bar')[+tip.dataset.i];if(b)b.classList.add('sel')}else tip.classList.add('sel');
     return}
-  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-card],#cardShare,[data-go],[data-g],[data-v],#importBtn,#monthsAll,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
+  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-look],[data-card],#cardShare,[data-go],[data-g],[data-v],#importBtn,#monthsAll,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
   if(e.target.id==='sheet'){closeSheet();return}
   if(!el)return;
   if(el.hasAttribute('data-close'))return closeSheet();
   if(el.dataset.month!==undefined)return openMonth(+el.dataset.month);
   if(el.dataset.year!==undefined){ST.year=+el.dataset.year;return render()}
   if(el.dataset.session!==undefined)return openSession(+el.dataset.session);
+  if(el.dataset.look){setLook(el.dataset.look);return render()}
   if(el.dataset.period!==undefined){ST.period=+el.dataset.period;return render()}
   if(el.dataset.card!==undefined)return openCard(+el.dataset.card);
   if(el.id==='cardShare')return shareCard();
