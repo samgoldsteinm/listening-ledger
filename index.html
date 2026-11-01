@@ -188,6 +188,7 @@ main{padding-bottom:calc(100px + env(safe-area-inset-bottom, 0px))}
 .xcard .v{font:700 18px/1.25 var(--display)}
 .xcard .d{font-size:13px;color:var(--muted)}
 .cardwrap{display:grid;justify-items:center}
+.avatar{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;border:2px solid var(--accent)}
 /* Page scrolls normally; the tab bar is pinned to the bottom edge and the iPhone bounce is off so it can't be dragged */
 html,body{overscroll-behavior-y:none}
 /* 16px inputs stop iPhone from zooming the page when tapped */
@@ -805,6 +806,20 @@ function artistTag(a){
   return tags.map(x=>`<span class="pill">${esc(x)}</span>`).join(' ');
 }
 
+/* ---------- Artist photos you add yourself (saved only in this browser) ---------- */
+async function photoGet(name){try{const db=await idb();return await new Promise(res=>{const q=db.transaction('kv').objectStore('kv').get('img:'+name);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})}catch(e){return null}}
+async function photoSet(name,blob){try{const db=await idb();await new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite'),st=tx.objectStore('kv');if(blob)st.put(blob,'img:'+name);else st.delete('img:'+name);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});return true}catch(e){return false}}
+async function loadBitmap(blob){
+  if(window.createImageBitmap){try{return await createImageBitmap(blob)}catch(e){}}
+  const url=URL.createObjectURL(blob);try{return await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url})}finally{setTimeout(()=>URL.revokeObjectURL(url),1000)}
+}
+async function fileToJpeg(file){
+  const img=await loadBitmap(file),w=img.width||img.naturalWidth,h=img.height||img.naturalHeight,s=Math.min(1,1400/Math.max(w,h)),c=document.createElement('canvas');
+  c.width=Math.round(w*s);c.height=Math.round(h*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  return await new Promise(r=>c.toBlob(r,'image/jpeg',.86));
+}
+async function loadAvatar(a){const b=await photoGet(DB.artists[a]),im=$('#artistAvatar');if(b&&im){im.src=URL.createObjectURL(b);im.hidden=false}}
+
 /* ---------- Shareable artist recap cards (1080×1920 story format) ---------- */
 const CDF='"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif',CBF='"Instrument Sans", "Segoe UI", system-ui, sans-serif',CMF='"JetBrains Mono", ui-monospace, Menlo, monospace';
 let CARD=null;
@@ -840,14 +855,22 @@ async function drawArtistCard(a){
   const tag=fav?`Longtime favorite · ${fav.active} months`:bin?`Binged in ${monthName(bin.pm,{month:'short',year:'numeric'})}`:cb?`Rediscovered after ${cb.gap} weeks`:'';
   // background
   let bg=x.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#1c0404');bg.addColorStop(.42,'#050505');bg.addColorStop(1,'#030303');x.fillStyle=bg;x.fillRect(0,0,W,H);
-  cardRecord(x,W-150,290,290,share);
+  let bmp=null;const ph=await photoGet(DB.artists[a]);if(ph){try{bmp=await loadBitmap(ph)}catch(e){}}
+  if(bmp){const PH=1250,iw=bmp.width||bmp.naturalWidth,ih=bmp.height||bmp.naturalHeight,sc=Math.max(W/iw,PH/ih),dw=iw*sc,dh=ih*sc;
+    x.save();x.beginPath();x.rect(0,0,W,PH);x.clip();x.drawImage(bmp,(W-dw)/2,-(dh-PH)*.3,dw,dh);x.restore();
+    const gr=x.createLinearGradient(0,0,0,PH);gr.addColorStop(0,'rgba(3,3,3,.6)');gr.addColorStop(.2,'rgba(3,3,3,.12)');gr.addColorStop(.42,'rgba(3,3,3,.18)');gr.addColorStop(.72,'rgba(3,3,3,.88)');gr.addColorStop(1,'#030303');
+    x.fillStyle=gr;x.fillRect(0,0,W,PH+2);
+  }else cardRecord(x,W-150,290,290,share);
   // header
   x.textBaseline='alphabetic';x.textAlign='left';
+  if(bmp){x.shadowColor='rgba(0,0,0,.7)';x.shadowBlur=18}
   x.fillStyle=INK;x.font=`700 30px ${CBF}`;cardSpacing(x,5);x.fillText('LISTENING LEDGER',L,130);
-  x.fillStyle=RED;x.font=`600 28px ${CBF}`;x.fillText(rangeLabel().toUpperCase(),L,176);cardSpacing(x,0);
+  x.fillStyle=bmp?INK:RED;x.font=`600 28px ${CBF}`;x.fillText(rangeLabel().toUpperCase(),L,176);cardSpacing(x,0);x.shadowBlur=0;x.shadowColor='transparent';
+  if(bmp){x.fillStyle=RED;x.fillRect(L,196,64,6)}
   // artist name
   const nm=cardName(x,DB.artists[a],RW);let y=790;x.fillStyle=INK;x.font=`800 ${nm.size}px ${CDF}`;
-  nm.lines.forEach((l,i)=>x.fillText(l,L,y+i*nm.size*1.02));y+=(nm.lines.length-1)*nm.size*1.02+nm.size*.3;
+  if(bmp){x.shadowColor='rgba(0,0,0,.55)';x.shadowBlur=28}
+  nm.lines.forEach((l,i)=>x.fillText(l,L,y+i*nm.size*1.02));x.shadowBlur=0;x.shadowColor='transparent';y+=(nm.lines.length-1)*nm.size*1.02+nm.size*.3;
   // tag pill
   if(tag){x.font=`600 30px ${CBF}`;const tw=x.measureText(tag).width+48;x.fillStyle='#3b0a0a';cardRR(x,L,y+20,tw,58,29);x.fill();x.fillStyle=INK;x.fillText(tag,L+24,y+60);y+=110}else y+=40;
   // stats
@@ -887,12 +910,14 @@ async function openCard(a){
   const name=DB.artists[a],file=(name.replace(/[^\w]+/g,'-').replace(/^-|-$/g,'')||'artist')+'-recap.png';
   showSheet(`<div class="head"><div><h3>Recap card · ${esc(rangeLabel())}</h3><h2>${esc(name)}</h2></div><button class="close" aria-label="Close" data-close>×</button></div>
   <div class="cardwrap"><p class="fine" id="cardStatus">Drawing your card…</p><img id="cardImg" alt="Recap card for ${esc(name)}" hidden></div>
+  <div class="cardbtns" id="photoBtns" hidden><button class="btn ghost" id="cardPhoto" type="button">Add artist photo</button><button class="btn ghost" id="cardPhotoDel" type="button" hidden>Remove photo</button><input type="file" id="photoFile" accept="image/*" hidden></div>
   <div class="cardbtns" id="cardBtns" hidden><button class="btn" id="cardShare" type="button">Share</button><a class="btn ghost" id="cardSave" download="${esc(file)}">Save image</a></div>
-  <p class="fine" id="cardHint" style="text-align:center">Press and hold the image to save it to your photos. Change the time range at the top to make a card for a different period.</p>`);
+  <p class="fine" id="cardHint" style="text-align:center">Add a photo of the artist from your camera roll and it becomes the card's background. Press and hold the card to save it. Change the time range at the top to make a card for a different period.</p>`);
   try{
     const blob=await drawArtistCard(a);if(CARD&&CARD.url)URL.revokeObjectURL(CARD.url);
-    const url=URL.createObjectURL(blob);CARD={blob,url,file,name};
-    const img=$('#cardImg');if(!img)return;img.src=url;img.hidden=false;$('#cardStatus').hidden=true;$('#cardSave').href=url;$('#cardBtns').hidden=false;
+    const url=URL.createObjectURL(blob);CARD={blob,url,file,name,a};
+    const img=$('#cardImg');if(!img)return;img.src=url;img.hidden=false;$('#cardStatus').hidden=true;
+    const has=!!(await photoGet(name)),pb=$('#photoBtns');if(pb){pb.hidden=false;$('#cardPhoto').textContent=has?'Change photo':'Add artist photo';$('#cardPhotoDel').hidden=!has}$('#cardSave').href=url;$('#cardBtns').hidden=false;
   }catch(err){const s=$('#cardStatus');if(s)s.textContent="The card couldn't be drawn on this device. Try again, or try from another browser."}
 }
 function shareCard(){
@@ -954,11 +979,12 @@ function openSong(k){
 function openArtist(a){
   const g=AGG,{lo,hi}=g,songs=g.songIdx.filter(k=>DB.songs[k].a===a).sort((x,y)=>g.sp[y]-g.sp[x]);
   const rank=sortedArtists('plays').indexOf(a)+1,max=g.sp[songs[0]]||1;
-  showSheet(`<div class="head"><div><h3>Artist · #${rank} in this range</h3><h2>${esc(DB.artists[a])}</h2>${artistTag(a)}<div style="margin-top:10px"><button class="btn" type="button" data-card="${a}">Make a recap card</button></div></div><button class="close" aria-label="Close" data-close>×</button></div>
+  showSheet(`<div class="head"><img class="avatar" id="artistAvatar" alt="" hidden><div><h3>Artist · #${rank} in this range</h3><h2>${esc(DB.artists[a])}</h2>${artistTag(a)}<div style="margin-top:10px"><button class="btn" type="button" data-card="${a}">Make a recap card</button></div></div><button class="close" aria-label="Close" data-close>×</button></div>
   <div class="kv"><div><b>${fmtN(g.ap[a])}</b><span>plays</span></div><div><b>${fmtN(g.am[a]/60)}</b><span>minutes listened</span></div><div><b>${fmtN(songs.length)}</b><span>different songs</span></div>
   <div><b>${(100*g.ap[a]/g.plays).toFixed(1)}%</b><span>of all your plays</span></div><div><b>${fmtDate(DB.aFirst[a])}</b><span>first ever play</span></div><div><b>${fmtN(songs.reduce((s,k)=>s+g.ssk[k],0))}</b><span>quick skips</span></div></div>
   <div><h3>Plays per month</h3>${monthlyFor(i=>DB.songs[DB.s[i]].a===a,lo,hi)}</div>
   <div><h3>Their songs you played</h3><div class="list">${songs.slice(0,30).map((k,i)=>songRow(k,i,max,'plays')).join('')}</div></div>`);
+  loadAvatar(a);
 }
 let lastFocus=null;
 function showSheet(html){const sh=$('#sheet');lastFocus=document.activeElement;sh.innerHTML=`<div class="card" role="dialog" aria-modal="true">${html}</div>`;sh.hidden=false;sh.querySelector('.close').focus();sh.querySelector('.card').scrollTop=0}
@@ -1019,7 +1045,7 @@ document.addEventListener('click',e=>{
     box.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));
     if(tip.dataset.i!==undefined){const b=box.querySelectorAll('.bar')[+tip.dataset.i];if(b)b.classList.add('sel')}else tip.classList.add('sel');
     return}
-  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-look],[data-card],#cardShare,[data-go],[data-g],[data-v],#importBtn,#monthsAll,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
+  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-look],[data-card],#cardShare,#cardPhoto,#cardPhotoDel,[data-go],[data-g],[data-v],#importBtn,#monthsAll,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
   if(e.target.id==='sheet'){closeSheet();return}
   if(!el)return;
   if(el.hasAttribute('data-close'))return closeSheet();
@@ -1030,6 +1056,8 @@ document.addEventListener('click',e=>{
   if(el.dataset.period!==undefined){ST.period=+el.dataset.period;return render()}
   if(el.dataset.card!==undefined)return openCard(+el.dataset.card);
   if(el.id==='cardShare')return shareCard();
+  if(el.id==='cardPhoto'){const fi=$('#photoFile');if(fi)fi.click();return}
+  if(el.id==='cardPhotoDel'&&CARD){const a=CARD.a;photoSet(CARD.name,null).then(()=>openCard(a));return}
   if(el.id==='sessAll'){ST.sessAll=!ST.sessAll;render();if(!ST.sessAll){const p=$('#sessAll');if(p)p.scrollIntoView({block:'center'})}return}
   if(el.dataset.song!==undefined)return openSong(+el.dataset.song);
   if(el.dataset.artist!==undefined)return openArtist(+el.dataset.artist);
@@ -1049,6 +1077,8 @@ document.addEventListener('change',e=>{
   if(e.target.id==='otd'&&e.target.value){ST.otd=e.target.value;render()}
   if(e.target.id==='songSort'){ST.songSort=e.target.value;ST.songLimit=50;render()}
   if(e.target.id==='artistSort'){ST.artistSort=e.target.value;ST.artistLimit=50;render()}
+  if(e.target.id==='photoFile'&&e.target.files[0]&&CARD){const a=CARD.a,nm=CARD.name,f=e.target.files[0];const st=$('#cardStatus');if(st){st.hidden=false;st.textContent='Adding your photo…'}
+    fileToJpeg(f).then(b=>photoSet(nm,b)).then(ok=>{if(ok)openCard(a);else if(st)st.textContent="That photo couldn't be saved. Try a different image."}).catch(()=>{if(st)st.textContent="That image couldn't be opened. Try a JPEG or PNG."});e.target.value='';return}
   if(e.target.id==='file'&&e.target.files[0]){handleFile(e.target.files[0]);e.target.value=''}
 });
 let qt;document.addEventListener('input',e=>{
