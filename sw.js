@@ -1,6 +1,6 @@
 // Listening Ledger service worker: makes the app open instantly and work offline.
 // Bump VERSION whenever you change index.html so phones pick up the new copy.
-const VERSION = 'ledger-v3';
+const VERSION = 'ledger-v4';
 const SHELL = [
   './',
   './index.html',

@@ -157,6 +157,17 @@ a{color:var(--accent)}
 .mname{font:700 15px var(--display)}
 .track.row{cursor:pointer}
 .namelist{font-size:14px;color:var(--muted);max-width:65ch}
+.sechead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.sechead h2{margin:0 auto 0 0}
+.sechead input{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.ptiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+@media (max-width:640px){.ptiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.ptile{display:grid;gap:2px;align-content:start;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink);cursor:pointer;font:inherit}
+.ptile[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft)}
+.ptile:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
+.ptile .pn{font-weight:600;font-size:13px}.ptile .pt{font:11px var(--mono);color:var(--muted)}.ptile .pv{font:700 22px var(--display);font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font:600 12px var(--body);background:var(--accent-soft);color:var(--ink);border-radius:999px;padding:3px 10px;margin-top:6px}
+.otd .v{font-size:19px}
 @media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .15s}}
 </style>
 </head>
@@ -175,6 +186,7 @@ a{color:var(--accent)}
     </div>
     <nav class="tabs" role="tablist" id="tabs">
       <button class="tab" role="tab" data-v="overview">Overview</button>
+      <button class="tab" role="tab" data-v="insights">Insights</button>
       <button class="tab" role="tab" data-v="songs">Songs</button>
       <button class="tab" role="tab" data-v="artists">Artists</button>
       <button class="tab" role="tab" data-v="periods">Months &amp; years</button>
@@ -206,8 +218,8 @@ const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const hourLabel=h=>h===0?'12a':h<12?h+'a':h===12?'12p':(h-12)+'p';
 
 let DB=null;
-const ST={range:'all',view:'overview',songSort:'plays',artistSort:'plays',songLimit:50,artistLimit:50,q:'',aq:'',year:null,sessAll:false};
-const VIEWS=['overview','songs','artists','periods','patterns','sessions','import'];
+const ST={range:'all',view:'overview',songSort:'plays',artistSort:'plays',songLimit:50,artistLimit:50,q:'',aq:'',year:null,sessAll:false,otd:null,period:null};
+const VIEWS=['overview','insights','songs','artists','periods','patterns','sessions','import'];
 let AGG=null;
 
 /* ---------- Parsing Google Takeout ---------- */
@@ -281,23 +293,28 @@ function sampleEntries(){
   const A1=['Marrow','Velvet','Paper','Neon','Quiet','Copper','Lantern','Static','Harbor','Glass','Hollow','Silver','Wild','Autumn','Satellite','Ember','Northern','Cedar','Lucid','Golden','Tin','Violet'];
   const A2=['Lane','Ordinals','Kites','Atlas','Choir','Signals','Tides','Ghosts','Parade','Motel','Fever','Society','Radio','Machines','Youth','Arcade','Saints','Weather','Club','Orchard','Static'];
   const W=['Midnight','Drive','Heartbeat','Overflow','Summer','Gold','Afterglow','Slow Burn','Blue Hour','Waves','Holding On','Tonight','Echoes','Paper Planes','Low Light','Gravity','Satellites','Fade','Undertow','Wildfire','Neon Rain','Coastline','Polaroid','Run Away','Daydream','Static Heart','Glow','Northbound','Tidal','Velvet Sky','Small Hours','Kerosene','Lemonade','Hurricane','Afterparty','Ghost Town','Mirrorball','Sundown','Rewind','July'];
-  const names=new Set();while(names.size<34){const n=(r()<.3?'The ':'')+pick(A1)+' '+pick(A2);names.add(n)}
-  const arts=[...names].map((name,i)=>{const used=new Set(),songs=[];const c=4+Math.floor(r()*9);
+  const names=new Set();while(names.size<36){names.add((r()<.3?'The ':'')+pick(A1)+' '+pick(A2))}
+  const DAYS_N=1095,MONTHS=Math.ceil(DAYS_N/30.44)+1;
+  // artist types: steady favorites, short binges, two-era comebacks, and everyone else
+  const arts=[...names].map((name,i)=>{const used=new Set(),songs=[],c=4+Math.floor(r()*9);
     while(songs.length<c){let w=pick(W);if(r()<.35)w+=' '+pick(['(Live)','Pt. II','(Acoustic)','Again','Tonight']);if(used.has(w))continue;used.add(w);songs.push({title:w,len:140+r()*190,w:1/Math.pow(songs.length+1,1.1)})}
-    return{name,songs,w:1/Math.pow(i+1,.85),peak:Math.floor(r()*12),boost:r()<.4?2+r()*5:0}});
-  const out=[],now=Date.now(),DAY=864e5,start=now-365*DAY;
-  const hourW=[3,2,1,.5,.3,.3,.8,2,3,3,2.5,2.5,3,3,3,3.5,4,5,6,6.5,6,5.5,5,4];
+    const type=i<6?'fav':i<16?'binge':i<24?'redisc':'normal',p1=1+Math.floor(r()*(MONTHS-14)),p2=p1+10+Math.floor(r()*Math.max(1,MONTHS-p1-11));
+    return{name,songs,w:1/Math.pow(i+1,.85),type,p1:type==='binge'||type==='normal'?1+Math.floor(r()*(MONTHS-2)):p1,p2}});
+  const g=(mo,p,s)=>Math.exp(-((mo-p)**2)/s);
+  const wAt=(x,mo)=>x.type==='fav'?x.w*1.6:x.type==='binge'?0.0005+4*g(mo,x.p1,.45):x.type==='redisc'?0.0005+2.2*(g(mo,x.p1,1)+g(mo,x.p2,1)):0.05*x.w+1.1*g(mo,x.p1,5);
+  const MW=[...Array(MONTHS)].map((_,mo)=>arts.map(x=>wAt(x,mo)));
   const pickW=(arr,f)=>{let tot=0;for(const x of arr)tot+=f(x);let v=r()*tot;for(const x of arr){v-=f(x);if(v<=0)return x}return arr[arr.length-1]};
-  for(let day=0;day<365;day++){
-    const dt=new Date(start+day*DAY),mo=dt.getMonth(),wk=dt.getDay();if(r()>(wk===0||wk===6?.9:.8))continue;
+  const pickI=ws=>{let tot=0;for(const x of ws)tot+=x;let v=r()*tot;for(let i=0;i<ws.length;i++){v-=ws[i];if(v<=0)return i}return ws.length-1};
+  const out=[],now=Date.now(),DAY=864e5,start=now-DAYS_N*DAY;
+  const hourW=[3,2,1,.5,.3,.3,.8,2,3,3,2.5,2.5,3,3,3,3.5,4,5,6,6.5,6,5.5,5,4];
+  for(let day=0;day<DAYS_N;day++){
+    const dt=new Date(start+day*DAY),mo=Math.floor(day/30.44),wk=dt.getDay();if(r()>(wk===0||wk===6?.88:.78))continue;
     const ns=1+Math.floor(r()*(r()<.3?3:2));
     for(let k=0;k<ns;k++){
-      const h=hourW.indexOf(pickW(hourW.map((w,i)=>w+i*1e-6),x=>x));
-      let t=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate(),h,Math.floor(r()*60)).getTime();
-      const len=4+Math.floor(r()*r()*40);let prev=null;
+      const h=pickI(hourW);let t=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate(),h,Math.floor(r()*60)).getTime();
+      const len=4+Math.floor(r()*r()*36);let prev=null;
       for(let j=0;j<len;j++){
-        let a,so;if(prev&&r()<.08){a=prev.a;so=prev.so}else{
-          a=pickW(arts,x=>x.w*(1+x.boost*Math.exp(-((mo-x.peak)**2)/3)));so=pickW(a.songs,x=>x.w)}
+        let a,so;if(prev&&r()<.08){a=prev.a;so=prev.so}else{a=arts[pickI(MW[mo])];so=pickW(a.songs,x=>x.w)}
         if(t>now)break;out.push({time:t,title:so.title,url:'',artist:a.name});
         t+=(r()<.1?(5+r()*22):so.len+r()*4)*1000+(r()<.05?r()*90000:0);prev={a,so};
       }
@@ -626,6 +643,138 @@ function vImport(){
   <p>Takeout records when each song started, not how long it played. Minutes are estimated from the gap until your next song, capped at that song's typical length, so skipped songs only count the seconds you heard. A play followed by another within 30 seconds counts as a quick skip. Plays made while your YouTube history was paused aren't in the export. Refresh by requesting a new Takeout export whenever you like.</p>
   ${DB&&!DB.isSample?`<button class="btn ghost" id="clear" type="button">Remove my history from this browser</button>`:''}</div>`;
 }
+/* ---------- Insights: lifecycles, on this day, times of day, favorites vs binges, comebacks ---------- */
+const weekOf=t=>Math.floor((dayNum(t)+3)/7);
+const weekStart=w=>dayDate(w*7-3);
+const weekEnd=w=>dayDate(w*7+3);
+const fmtShortD=d=>d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+function erasOf(weeks,cnt,breakGap){const out=[];let cur=null;for(const w of weeks){if(!cur||w-cur.e>breakGap){cur={s:w,e:w,plays:0};out.push(cur)}cur.e=w;cur.plays+=cnt.get(w)}return out}
+function buildLife(){
+  if(DB._life)return DB._life;
+  const {t,s,songs,artists}=DB,S=songs.length,A=artists.length;
+  const sw=Array.from({length:S},()=>new Map()),aw=Array.from({length:A},()=>new Map()),am=Array.from({length:A},()=>new Map());
+  for(let i=0;i<t.length;i++){const k=s[i],a=songs[k].a,w=weekOf(t[i]),d=new Date(t[i]),mk=d.getFullYear()*12+d.getMonth();
+    sw[k].set(w,(sw[k].get(w)||0)+1);aw[a].set(w,(aw[a].get(w)||0)+1);am[a].set(mk,(am[a].get(mk)||0)+1)}
+  const summarize=m=>{const weeks=[...m.keys()].sort((x,y)=>x-y);if(!weeks.length)return null;let pw=weeks[0],pc=0,tot=0;
+    for(const w of weeks){const c=m.get(w);tot+=c;if(c>pc){pc=c;pw=w}}
+    // rotation: the unbroken stretch around the peak week, allowing gaps of up to 2 empty weeks
+    const rot=erasOf(weeks,m,3).find(e=>pw>=e.s&&pw<=e.e);
+    return{plays:tot,peakW:pw,peakC:pc,rotS:rot.s,rotE:rot.e,rotWeeks:rot.e-rot.s+1,rotPlays:rot.plays,activeWeeks:weeks.length,eras:erasOf(weeks,m,12)}};
+  const sFirst=new Float64Array(S).fill(Infinity);for(let i=t.length-1;i>=0;i--)sFirst[s[i]]=t[i];
+  DB._life={song:sw.map(summarize),artist:aw.map(summarize),am,sFirst};return DB._life;
+}
+// A comeback: a heavy run, then 12+ empty weeks, then a real return
+function comeback(L,minBefore,minAfter){
+  if(!L||L.eras.length<2)return null;
+  for(let i=0;i<L.eras.length-1;i++){const a=L.eras[i];if(a.plays<minBefore)continue;
+    for(let j=i+1;j<L.eras.length;j++){const b=L.eras[j];if(b.plays>=minAfter)return{before:a.plays,gap:b.s-a.e-1,backW:b.s,after:b.plays}}}
+  return null;
+}
+function artistKinds(){
+  if(DB._kinds)return DB._kinds;
+  const Lf=buildLife(),t=DB.t;if(!t.length)return{fav:[],binge:[]};
+  const d0=new Date(t[0]),d1=new Date(t[t.length-1]),m0=d0.getFullYear()*12+d0.getMonth(),m1=d1.getFullYear()*12+d1.getMonth(),H=m1-m0+1;
+  const needSpan=Math.min(12,Math.max(3,Math.round(H*.6))),needActive=Math.min(6,Math.max(2,Math.round(H*.4)));
+  const fav=[],binge=[];
+  Lf.am.forEach((m,a)=>{const tot=Lf.artist[a]?Lf.artist[a].plays:0;if(!tot)return;
+    const ks=[...m.keys()].sort((x,y)=>x-y),active=ks.filter(k=>m.get(k)>=3).length,span=ks[ks.length-1]-ks[0]+1;
+    let pm=ks[0],pc=0;for(const k of ks)if(m.get(k)>pc){pc=m.get(k);pm=k}
+    const win=(m.get(pm-1)||0)+pc+(m.get(pm+1)||0);
+    if(tot>=30&&span>=needSpan&&active>=needActive)fav.push({a,tot,active,span,since:ks[0]});
+    else if(tot>=15&&win/tot>=.75&&active<=3)binge.push({a,tot,win,pm,after:ks.filter(k=>k>pm+1).reduce((n,k)=>n+m.get(k),0),ongoing:pm>=m1-1});
+  });
+  fav.sort((x,y)=>y.active-x.active||y.tot-x.tot);binge.sort((x,y)=>y.win-x.win);
+  return DB._kinds={fav,binge};
+}
+const PERIODS=[{name:'Late night',from:0,to:4},{name:'Early morning',from:4,to:8},{name:'Morning',from:8,to:12},{name:'Afternoon',from:12,to:17},{name:'Evening',from:17,to:21},{name:'Night',from:21,to:24}];
+const periodOf=h=>PERIODS.findIndex(p=>h>=p.from&&h<p.to);
+const periodSpan=p=>`${hourLabel(p.from)}m–${hourLabel(p.to%24)}m`;
+function row2(i,attr,id,title,sub,stats,pct){
+  return`<button class="row" data-${attr}="${id}"><span class="rank">${i+1}</span><span style="min-width:0"><div class="t">${esc(title)}</div><div class="a">${esc(sub)}</div><div class="meter"><i style="width:${Math.min(100,pct).toFixed(1)}%"></i></div></span><span class="stats">${stats}</span></button>`;
+}
+const noneYet=m=>`<p class="fine">${m}</p>`;
+const artistOf=k=>DB.artists[DB.songs[k].a];
+
+function otdSection(){
+  const base=ST.otd?new Date(ST.otd+'T12:00:00'):new Date(),m=base.getMonth(),d=base.getDate(),Y=base.getFullYear(),t=DB.t,firstY=new Date(t[0]).getFullYear(),cards=[];
+  for(let y=Y-1;y>=firstY;y--){
+    if(new Date(y,m,d).getMonth()!==m)continue; // Feb 29 in a non-leap year
+    let lo=lowerBound(t,new Date(y,m,d).getTime()),hi=lowerBound(t,new Date(y,m,d+1).getTime()),around=false;
+    if(hi<=lo){lo=lowerBound(t,new Date(y,m,d-3).getTime());hi=lowerBound(t,new Date(y,m,d+4).getTime());around=true}
+    if(hi<=lo)continue;
+    const st=periodStats(lo,hi),ts=st.topS[0],ta=st.topA[0],ago=Y-y,when=around?'that week':'that day';
+    cards.push(`<div class="ins otd"><h3>${ago===1?'1 year ago':ago+' years ago'} · ${esc(new Date(y,m,d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'}))}</h3>
+      <button class="row" data-song="${ts[0]}" style="grid-template-columns:minmax(0,1fr) auto;padding:4px 0;border:0"><span style="min-width:0"><div class="t v">${esc(DB.songs[ts[0]].title)}</div><div class="a">${esc(artistOf(ts[0]))}</div></span><span class="stats"><span>${ts[1]}×<small>${when}</small></span></span></button>
+      <div class="d">You listened <b>${fmtDur(st.min*60)}</b> ${when}${around?' (nothing on the day itself)':''}. Top artist: <b>${esc(DB.artists[ta[0]])}</b>.${st.topS.length>1?` Also playing: ${st.topS.slice(1,4).map(([k])=>esc(DB.songs[k].title)).join(', ')}.`:''}</div></div>`);
+  }
+  const iso=`${Y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  return`<div><div class="sechead"><h2>On this day</h2><label class="fine" for="otd">Date</label><input type="date" id="otd" value="${iso}"></div>
+  <p class="fine">Your most played song on ${esc(base.toLocaleDateString(undefined,{month:'long',day:'numeric'}))} in earlier years. Tap a song for its full story.</p>
+  ${cards.length?`<div class="insights">${cards.join('')}</div>`:`<div class="panel">${noneYet('Nothing from earlier years on this date yet. Once your history goes back more than a year, this fills in automatically.')}</div>`}</div>`;
+}
+function timesSection(){
+  const g=AGG;if(!g.plays)return'';
+  const P=PERIODS.map(()=>({min:0,plays:0,sc:new Map(),ac:new Map()}));
+  for(let i=g.lo;i<g.hi;i++){const p=P[periodOf(new Date(DB.t[i]).getHours())],k=DB.s[i],a=DB.songs[k].a;p.min+=DB.est[i]/60;p.plays++;p.sc.set(k,(p.sc.get(k)||0)+1);p.ac.set(a,(p.ac.get(a)||0)+1)}
+  if(ST.period==null){let b=0;P.forEach((p,i)=>{if(p.min>P[b].min)b=i});ST.period=b}
+  const sel=ST.period,p=P[sel],per=PERIODS[sel],totMin=g.total/60;
+  const tiles=PERIODS.map((q,i)=>`<button class="ptile" data-period="${i}" aria-pressed="${i===sel}"><span class="pn">${q.name}</span><span class="pt">${periodSpan(q)}</span><span class="pv">${(100*P[i].min/totMin).toFixed(0)}%</span><span class="pt">${fmtH(P[i].min*60)} hours</span></button>`).join('');
+  const top=[...p.sc.entries()].sort((x,y)=>y[1]-x[1]),maxc=top[0]?top[0][1]:1;
+  const songRows=top.slice(0,10).map(([k,c],i)=>row2(i,'song',k,DB.songs[k].title,artistOf(k),`<span>${fmtN(c)}<small>plays</small></span><span class="opt">${Math.round(100*c/g.sp[k])}%<small>of its plays</small></span>`,100*c/maxc)).join('');
+  const sig=[...p.sc.entries()].filter(([k,c])=>g.sp[k]>=6&&c>=4).map(([k,c])=>({k,c,r:c/g.sp[k]})).sort((x,y)=>y.r-x.r||y.c-x.c).slice(0,8);
+  const sigRows=sig.map((x,i)=>row2(i,'song',x.k,DB.songs[x.k].title,artistOf(x.k),`<span>${Math.round(100*x.r)}%<small>at this time</small></span>`,100*x.r)).join('');
+  const arts=[...p.ac.entries()].sort((x,y)=>y[1]-x[1]).slice(0,6).map(([a,c])=>`<b>${esc(DB.artists[a])}</b> (${c})`).join(', ');
+  return`<div><h2>Your music by time of day</h2><p class="fine">For the time range picked at the top. Tap a time of day to see what you play then.</p><div class="ptiles">${tiles}</div></div>
+  <div class="two"><div><h2>Top ${per.name.toLowerCase()} songs</h2><p class="fine">${periodSpan(per)} · ${fmtN(p.plays)} plays · ${fmtDur(p.min*60)}</p><div class="list">${songRows||noneYet('Nothing played at this time of day.')}</div></div>
+  <div><h2>${per.name} signatures</h2><p class="fine">Songs you mostly save for this time. The number is how much of each song's listening happens then.</p><div class="list">${sigRows||noneYet('No songs stand out for this time yet.')}</div>
+  ${arts?`<h3 style="margin-top:18px">Top ${per.name.toLowerCase()} artists</h3><p class="namelist">${arts}</p>`:''}</div></div>`;
+}
+function kindsSection(){
+  const K=artistKinds(),mn=k=>monthName(k,{month:'short',year:'numeric'});
+  const fav=K.fav.slice(0,10).map((f,i)=>row2(i,'artist',f.a,DB.artists[f.a],`Since ${mn(f.since)} · played in ${f.active} of ${f.span} months`,`<span>${fmtN(f.tot)}<small>plays</small></span>`,100*f.active/f.span)).join('');
+  const bin=K.binge.slice(0,10).map((b,i)=>row2(i,'artist',b.a,DB.artists[b.a],`${mn(b.pm)}${b.ongoing?' · still going':''} · ${b.after?b.after+' plays since':'none since'}`,`<span>${fmtN(b.win)}<small>in the binge</small></span>`,100*b.win/b.tot)).join('');
+  return`<div class="two"><div><h2>Longtime favorites</h2><p class="fine">Artists you keep coming back to month after month, across all your history. The bar shows how many months they appeared in.</p><div class="list">${fav||noneYet('Not enough history yet to spot longtime favorites.')}</div></div>
+  <div><h2>Quick binges</h2><p class="fine">Artists you played heavily for a month or two, then mostly left. The bar shows how much of their listening happened during the binge.</p><div class="list">${bin||noneYet('No short binges found.')}</div></div></div>`;
+}
+function comebackSection(){
+  const L=buildLife(),songs=[],arts=[];
+  L.song.forEach((x,k)=>{const c=comeback(x,8,5);if(c)songs.push({k,...c})});
+  L.artist.forEach((x,a)=>{const c=comeback(x,15,10);if(c)arts.push({a,...c})});
+  songs.sort((x,y)=>y.backW-x.backW);arts.sort((x,y)=>y.backW-x.backW);
+  const away=n=>n>=9?`${Math.round(n/4.35)} months`:`${n} weeks`;
+  const sr=songs.slice(0,12).map((c,i)=>row2(i,'song',c.k,DB.songs[c.k].title,`${artistOf(c.k)} · back ${fmtShortD(weekStart(c.backW))} after ${away(c.gap)} away`,`<span>${c.before}<small>before</small></span><span>${c.after}<small>after</small></span>`,100*c.after/(c.before+c.after))).join('');
+  const ar=arts.slice(0,10).map((c,i)=>row2(i,'artist',c.a,DB.artists[c.a],`Back ${fmtShortD(weekStart(c.backW))} after ${away(c.gap)} away`,`<span>${c.before}<small>before</small></span><span>${c.after}<small>after</small></span>`,100*c.after/(c.before+c.after))).join('');
+  return`<div><h2>Rediscovered favorites</h2><p class="fine">Things you played constantly, dropped for at least three months, then came back to. Most recent comebacks first.</p>
+  <div class="two"><div><h3>Songs</h3><div class="list">${sr||noneYet('No song comebacks yet.')}</div></div><div><h3>Artists</h3><div class="list">${ar||noneYet('No artist comebacks yet.')}</div></div></div></div>`;
+}
+function lifecycleSection(){
+  const L=buildLife(),idx=[];L.song.forEach((x,k)=>{if(x)idx.push(k)});
+  const rot=idx.filter(k=>L.song[k].rotPlays>=5).sort((x,y)=>L.song[y].rotWeeks-L.song[x].rotWeeks||L.song[y].rotPlays-L.song[x].rotPlays).slice(0,10),maxR=rot.length?L.song[rot[0]].rotWeeks:1;
+  const peak=idx.slice().sort((x,y)=>L.song[y].peakC-L.song[x].peakC).slice(0,10),maxP=peak.length?L.song[peak[0]].peakC:1;
+  const rr=rot.map((k,i)=>{const x=L.song[k];return row2(i,'song',k,DB.songs[k].title,`${artistOf(k)} · ${fmtShortD(weekStart(x.rotS))} – ${fmtShortD(weekEnd(x.rotE))}`,`<span>${x.rotWeeks}<small>weeks</small></span>`,100*x.rotWeeks/maxR)}).join('');
+  const pr=peak.map((k,i)=>{const x=L.song[k];return row2(i,'song',k,DB.songs[k].title,`${artistOf(k)} · week of ${fmtShortD(weekStart(x.peakW))}`,`<span>${x.peakC}<small>that week</small></span>`,100*x.peakC/maxP)}).join('');
+  return`<div class="two"><div><h2>Longest in rotation</h2><p class="fine">Songs you kept playing week after week, never going more than two weeks without them.</p><div class="list">${rr||noneYet('Nothing yet.')}</div></div>
+  <div><h2>Biggest peak weeks</h2><p class="fine">The most you've ever played one song in a single week.</p><div class="list">${pr||noneYet('Nothing yet.')}</div></div></div>`;
+}
+function vInsights(){
+  if(!DB.t.length)return emptyRange();
+  return otdSection()+timesSection()+kindsSection()+comebackSection()+lifecycleSection();
+}
+function songStory(k){
+  const Lf=buildLife(),L=Lf.song[k];if(!L)return'';const cb=comeback(L,8,5);
+  const runs=cb?`<b>Came back</b><span>after ${cb.gap} weeks away, ${fmtShortD(weekStart(cb.backW))}</span>`:L.eras.length>1?`<b>${L.eras.length} runs</b><span>separate stretches with long breaks</span>`:`<b>One run</b><span>no breaks of 3+ months</span>`;
+  return`<div><h3>Its story, across all your history</h3><div class="kv">
+  <div><b>${fmtShortD(new Date(Lf.sFirst[k]))}</b><span>first played</span></div>
+  <div><b>${L.peakC} plays</b><span>peak week: ${fmtShortD(weekStart(L.peakW))}</span></div>
+  <div><b>${L.rotWeeks} ${L.rotWeeks===1?'week':'weeks'}</b><span>in rotation, ${fmtShortD(weekStart(L.rotS))} – ${fmtShortD(weekEnd(L.rotE))}</span></div>
+  <div><b>${fmtN(L.plays)}</b><span>plays all time</span></div><div><b>${L.activeWeeks}</b><span>different weeks played</span></div><div>${runs}</div></div></div>`;
+}
+function artistTag(a){
+  const K=artistKinds(),f=K.fav.find(x=>x.a===a),b=K.binge.find(x=>x.a===a),c=comeback(buildLife().artist[a],15,10);
+  const tags=[];if(f)tags.push(`Longtime favorite · ${f.active} of ${f.span} months`);if(b)tags.push(`Binged in ${monthName(b.pm)}`);if(c)tags.push(`Rediscovered after ${c.gap} weeks away`);
+  return tags.map(x=>`<span class="pill">${esc(x)}</span>`).join(' ');
+}
+
 const emptyRange=()=>`<div class="panel"><h2>No plays in this range</h2><p class="fine">Pick a wider time range at the top.</p></div>`;
 
 /* ---------- Detail sheets ---------- */
@@ -645,13 +794,14 @@ function openSong(k){
   <div class="kv"><div><b>${fmtN(g.sp[k])}</b><span>plays</span></div><div><b>${fmtN(Math.max(0,g.sp[k]-1))}</b><span>replays</span></div><div><b>${fmtN(g.sm[k]/60)}</b><span>minutes listened</span></div>
   <div><b>${g.srun[k]}×</b><span>most in a row</span></div><div><b>${fmtN(g.ssk[k])}</b><span>quick skips</span></div><div><b>${(DB.songLen[k]/60).toFixed(1)} min</b><span>typical length</span></div>
   <div><b>${fmtDate(g.sfirst[k])}</b><span>first play in range</span></div><div><b>${fmtDate(g.slast[k])}</b><span>latest play</span></div><div><b>${hourLabel(ph)}m</b><span>usual hour</span></div></div>
+  ${songStory(k)}
   <div><h3>Plays per month</h3>${monthlyFor(i=>DB.s[i]===k,lo,hi)}</div>
   ${url?`<a href="${esc(url)}" target="_blank" rel="noopener">Open in YouTube Music</a>`:''}`);
 }
 function openArtist(a){
   const g=AGG,{lo,hi}=g,songs=g.songIdx.filter(k=>DB.songs[k].a===a).sort((x,y)=>g.sp[y]-g.sp[x]);
   const rank=sortedArtists('plays').indexOf(a)+1,max=g.sp[songs[0]]||1;
-  showSheet(`<div class="head"><div><h3>Artist · #${rank} in this range</h3><h2>${esc(DB.artists[a])}</h2></div><button class="close" aria-label="Close" data-close>×</button></div>
+  showSheet(`<div class="head"><div><h3>Artist · #${rank} in this range</h3><h2>${esc(DB.artists[a])}</h2>${artistTag(a)}</div><button class="close" aria-label="Close" data-close>×</button></div>
   <div class="kv"><div><b>${fmtN(g.ap[a])}</b><span>plays</span></div><div><b>${fmtN(g.am[a]/60)}</b><span>minutes listened</span></div><div><b>${fmtN(songs.length)}</b><span>different songs</span></div>
   <div><b>${(100*g.ap[a]/g.plays).toFixed(1)}%</b><span>of all your plays</span></div><div><b>${fmtDate(DB.aFirst[a])}</b><span>first ever play</span></div><div><b>${fmtN(songs.reduce((s,k)=>s+g.ssk[k],0))}</b><span>quick skips</span></div></div>
   <div><h3>Plays per month</h3>${monthlyFor(i=>DB.songs[DB.s[i]].a===a,lo,hi)}</div>
@@ -673,7 +823,7 @@ function render(){
   document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===ST.view));
   $('#src').textContent=DB.isSample?'Sample data · invented artists':`${DB.source||'Your history'} · ${fmtN(DB.t.length)} plays`;
   $('#notice').innerHTML=DB.isSample&&ST.view!=='import'?`<div class="notice"><span class="grow"><b>You're looking at sample data.</b> Import your Google Takeout export to see your own YouTube Music history.</span><button class="btn" data-go="import" type="button">Show me how</button></div>`:'';
-  const fn={overview:vOverview,songs:vSongs,artists:vArtists,periods:vPeriods,patterns:vPatterns,sessions:vSessions,import:vImport}[ST.view]||vOverview;
+  const fn={overview:vOverview,insights:vInsights,songs:vSongs,artists:vArtists,periods:vPeriods,patterns:vPatterns,sessions:vSessions,import:vImport}[ST.view]||vOverview;
   $('#range').disabled=ST.view==='periods';$('#range').title=ST.view==='periods'?'Months & years uses your full history':'';
   $('#view').innerHTML=`<section class="view">${fn()}</section>`;
   const ss=$('#songSort');if(ss)ss.value=ST.songSort;const as=$('#artistSort');if(as)as.value=ST.artistSort;
@@ -707,13 +857,14 @@ document.addEventListener('click',e=>{
     box.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));
     if(tip.dataset.i!==undefined){const b=box.querySelectorAll('.bar')[+tip.dataset.i];if(b)b.classList.add('sel')}else tip.classList.add('sel');
     return}
-  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-go],[data-v],#importBtn,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
+  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-go],[data-v],#importBtn,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
   if(e.target.id==='sheet'){closeSheet();return}
   if(!el)return;
   if(el.hasAttribute('data-close'))return closeSheet();
   if(el.dataset.month!==undefined)return openMonth(+el.dataset.month);
   if(el.dataset.year!==undefined){ST.year=+el.dataset.year;return render()}
   if(el.dataset.session!==undefined)return openSession(+el.dataset.session);
+  if(el.dataset.period!==undefined){ST.period=+el.dataset.period;return render()}
   if(el.id==='sessAll'){ST.sessAll=!ST.sessAll;render();if(!ST.sessAll){const p=$('#sessAll');if(p)p.scrollIntoView({block:'center'})}return}
   if(el.dataset.song!==undefined)return openSong(+el.dataset.song);
   if(el.dataset.artist!==undefined)return openArtist(+el.dataset.artist);
@@ -728,6 +879,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#sheet').hidden)closeSheet()});
 document.addEventListener('change',e=>{
   if(e.target.id==='range'){ST.range=e.target.value;render()}
+  if(e.target.id==='otd'&&e.target.value){ST.otd=e.target.value;render()}
   if(e.target.id==='songSort'){ST.songSort=e.target.value;ST.songLimit=50;render()}
   if(e.target.id==='artistSort'){ST.artistSort=e.target.value;ST.artistLimit=50;render()}
   if(e.target.id==='file'&&e.target.files[0]){handleFile(e.target.files[0]);e.target.value=''}
