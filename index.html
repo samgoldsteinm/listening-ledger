@@ -187,6 +187,14 @@ main{padding-bottom:calc(100px + env(safe-area-inset-bottom, 0px))}
 .xcard .v{font:700 18px/1.25 var(--display)}
 .xcard .d{font-size:13px;color:var(--muted)}
 .cardwrap{display:grid;justify-items:center}
+/* App shell: the header and tab bar are fixed parts of the screen; only the middle scrolls */
+body{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden}
+body::before{display:none}
+header.top{position:relative;top:auto;flex:none;padding-top:env(safe-area-inset-top, 0px)}
+main#scroller{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-block:20px 40px}
+nav.bottom{position:relative;flex:none}
+/* 16px inputs stop iPhone from zooming the page when tapped */
+select,input[type=search],input[type=date]{font-size:16px}
 .cardwrap img{display:block;width:100%;max-width:340px;height:auto;border-radius:14px;border:1px solid var(--line)}
 .cardbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .otd .v{font-size:19px}
@@ -210,10 +218,10 @@ main{padding-bottom:calc(100px + env(safe-area-inset-bottom, 0px))}
   </div>
 </header>
 
-<main class="wrap">
+<main id="scroller"><div class="wrap">
   <div id="notice"></div>
   <div id="view"></div>
-</main>
+</div></main>
 <nav class="bottom" id="bottomNav" aria-label="Main"><div class="in"></div></nav>
 <input type="file" id="file" accept=".zip,.json,.html,application/zip,application/json,text/html" hidden>
 <div id="sheet" class="sheet" hidden></div>
@@ -970,7 +978,7 @@ function render(){
   $('#view').innerHTML=`<section class="view">${VIEW_FN[ST.view]()}</section>`;
   const ss=$('#songSort');if(ss)ss.value=ST.songSort;const as=$('#artistSort');if(as)as.value=ST.artistSort;
 }
-function go(v){v=ALIAS[v]||v;ST.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();window.scrollTo(0,0)}
+function go(v){v=ALIAS[v]||v;ST.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();const sc=$('#scroller');if(sc)sc.scrollTop=0}
 function setStatus(html,isErr){$('#notice').innerHTML=`<div class="notice${isErr?' err':''}"><span class="grow">${html}</span></div>`}
 
 async function handleFile(file){
