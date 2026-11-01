@@ -71,7 +71,7 @@ section.view{display:grid;gap:28px}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
 .hero{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.hero div{background:var(--surface);padding:16px}
+.hero>div{background:var(--surface);padding:16px}
 .hero .big{font:800 34px/1 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .hero .unit{font:600 13px var(--body);color:var(--muted);margin-left:4px}
 .hero .sub{font-size:12px;color:var(--muted);margin-top:6px}
@@ -187,14 +187,17 @@ main{padding-bottom:calc(100px + env(safe-area-inset-bottom, 0px))}
 .xcard .v{font:700 18px/1.25 var(--display)}
 .xcard .d{font-size:13px;color:var(--muted)}
 .cardwrap{display:grid;justify-items:center}
-/* App shell: the header and tab bar are fixed parts of the screen; only the middle scrolls */
-body{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden}
-body::before{display:none}
-header.top{position:relative;top:auto;flex:none;padding-top:env(safe-area-inset-top, 0px)}
-main#scroller{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-block:20px 40px}
-nav.bottom{position:relative;flex:none}
+/* Page scrolls normally; the tab bar is pinned to the bottom edge and the iPhone bounce is off so it can't be dragged */
+html,body{overscroll-behavior-y:none}
 /* 16px inputs stop iPhone from zooming the page when tapped */
 select,input[type=search],input[type=date]{font-size:16px}
+.toprow{flex-wrap:nowrap}
+#range{max-width:34vw;padding:7px 8px;flex:none}
+.brand{flex:1 1 auto;min-width:0}
+.brand h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand .src{max-width:100%}
+@media (max-width:480px){h1{font-size:18px}.brand svg{width:26px;height:26px}}
+.btn.compact{padding:8px 12px;flex:none}
 .cardwrap img{display:block;width:100%;max-width:340px;height:auto;border-radius:14px;border:1px solid var(--line)}
 .cardbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .otd .v{font-size:19px}
@@ -212,7 +215,7 @@ select,input[type=search],input[type=date]{font-size:16px}
       </div>
       <select id="range" aria-label="Time range"></select>
       <span class="fullhist" id="fullHist" hidden>Full history</span>
-      <button class="btn" id="importBtn" type="button">Import my history</button>
+      <button class="btn compact" id="importBtn" type="button">Import</button>
     </div>
     <nav class="seg" id="seg" aria-label="Pages in this section"></nav>
   </div>
@@ -457,7 +460,7 @@ function vOverview(){
     <div><h3>Listening time</h3><div class="big">${fmtH(g.total)}<span class="unit">hours</span></div><div class="sub">${fmtN(g.total/60)} minutes, estimated</div></div>
     <div><h3>Plays</h3><div class="big">${fmtN(g.plays)}</div><div class="sub">${fmtN(g.plays/Math.max(1,ld))} per listening day</div></div>
     <div><h3>Songs</h3><div class="big">${fmtN(g.songIdx.length)}</div><div class="sub">${fmtN(g.songIdx.filter(k=>g.sp[k]===1).length)} heard only once</div></div>
-    <div><h3>Artists</h3><div class="big">${fmtN(g.artIdx.length)}</div><div class="sub">${fmtN(g.newArtists.length)} new to you</div></div></div>`;
+    <div><h3>Artists</h3><div class="big">${fmtN(g.artIdx.length)}</div><div class="sub">${ST.range==='all'?fmtN(g.artIdx.filter(a=>g.ap[a]>=10).length)+' with 10+ plays':fmtN(g.newArtists.length)+' new to you'}</div></div></div>`;
   const tl=`<div class="panel"><h2>How much you listened over time</h2>${timeline(cb=>{for(let i=g.lo;i<g.hi;i++)cb(DB.t[i],DB.est[i]/60)},g.lo,g.hi,'Listening over time')}<p class="fine">${fmtDate(g.tlo)} – ${fmtDate(g.thi)} · listened on ${fmtN(ld)} days</p><button class="btn ghost more" data-go="periods">Monthly and yearly breakdown</button></div>`;
   const ms=g.sp[ts[0]],ma=g.am[ta[0]];
   const lists=`<div class="two"><div><h2>Top songs</h2><div class="list">${ts.slice(0,5).map((k,i)=>songRow(k,i,ms,'plays')).join('')}</div><button class="btn ghost more" data-go="songs">All ${fmtN(g.songIdx.length)} songs</button></div>
@@ -972,13 +975,13 @@ function render(){
   $('#bottomNav .in').innerHTML=GROUPS.map(g=>`<button type="button" data-g="${g.id}"${g.id===gid?' aria-current="page"':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${g.icon}</svg><span>${g.label}</span></button>`).join('');
   $('#seg').innerHTML=grp&&grp.views.length>1?grp.views.map(([id,l])=>`<button type="button" data-v="${id}"${id===ST.view?' aria-current="page"':''}>${l}</button>`).join(''):'';
   const ranged=RANGED.has(ST.view);$('#range').hidden=!ranged;$('#fullHist').hidden=ranged||ST.view==='data';
-  $('#importBtn').textContent=DB.isSample?'Import my history':'Your data';
+  $('#importBtn').textContent=DB.isSample?'Import':'Data';
   $('#src').textContent=DB.isSample?'Sample data · invented artists':`${DB.source||'Your history'} · ${fmtN(DB.t.length)} plays`;
   $('#notice').innerHTML=DB.isSample&&ST.view==='home'?`<div class="notice"><span class="grow"><b>You're looking at sample data.</b> Import your Google Takeout export to see your own YouTube Music history.</span><button class="btn" data-go="data" type="button">Show me how</button></div>`:'';
   $('#view').innerHTML=`<section class="view">${VIEW_FN[ST.view]()}</section>`;
   const ss=$('#songSort');if(ss)ss.value=ST.songSort;const as=$('#artistSort');if(as)as.value=ST.artistSort;
 }
-function go(v){v=ALIAS[v]||v;ST.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();const sc=$('#scroller');if(sc)sc.scrollTop=0}
+function go(v){v=ALIAS[v]||v;ST.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();window.scrollTo(0,0)}
 function setStatus(html,isErr){$('#notice').innerHTML=`<div class="notice${isErr?' err':''}"><span class="grow">${html}</span></div>`}
 
 async function handleFile(file){
