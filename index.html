@@ -167,6 +167,25 @@ a{color:var(--accent)}
 .ptile:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
 .ptile .pn{font-weight:600;font-size:13px}.ptile .pt{font:11px var(--mono);color:var(--muted)}.ptile .pv{font:700 22px var(--display);font-variant-numeric:tabular-nums}
 .pill{display:inline-block;font:600 12px var(--body);background:var(--accent-soft);color:var(--ink);border-radius:999px;padding:3px 10px;margin-top:6px}
+.seg{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:10px}
+.seg::-webkit-scrollbar{display:none}
+.seg:empty{display:none}
+.seg button{font:600 13px var(--body);white-space:nowrap;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 14px;cursor:pointer}
+.seg button[aria-current=page]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.seg button:focus-visible,nav.bottom button:focus-visible,.xcard:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
+.fullhist{font:600 12px var(--body);color:var(--muted);border:1px dashed var(--line);border-radius:8px;padding:8px 10px;white-space:nowrap}
+nav.bottom{position:fixed;left:0;right:0;bottom:0;z-index:15;background:color-mix(in oklab,var(--bg) 90%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);display:flex;justify-content:center;padding:6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px))}
+nav.bottom .in{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;max-width:560px}
+nav.bottom button{display:grid;justify-items:center;gap:3px;background:none;border:0;color:var(--muted);font:600 11px var(--body);padding:6px 2px;cursor:pointer;border-radius:10px}
+nav.bottom button svg{width:24px;height:24px}
+nav.bottom button[aria-current=page]{color:var(--accent)}
+main{padding-bottom:calc(100px + env(safe-area-inset-bottom, 0px))}
+.explore{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.xcard{text-align:left;display:grid;gap:4px;align-content:start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;color:var(--ink);cursor:pointer;font:inherit}
+.xcard:hover{border-color:var(--accent)}
+.xcard .k{font:600 11px var(--body);text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.xcard .v{font:700 18px/1.25 var(--display)}
+.xcard .d{font-size:13px;color:var(--muted)}
 .cardwrap{display:grid;justify-items:center}
 .cardwrap img{display:block;width:100%;max-width:340px;height:auto;border-radius:14px;border:1px solid var(--line)}
 .cardbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
@@ -183,20 +202,11 @@ a{color:var(--accent)}
         <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="14" fill="var(--ink)"/><circle cx="15" cy="15" r="9.5" fill="none" stroke="var(--muted)" stroke-width=".6"/><circle cx="15" cy="15" r="6.5" fill="none" stroke="var(--muted)" stroke-width=".6"/><circle cx="15" cy="15" r="3.6" fill="var(--accent)"/><circle cx="15" cy="15" r="1" fill="var(--ink)"/></svg>
         <div style="min-width:0"><h1>Listening Ledger</h1><div class="src" id="src">Sample data</div></div>
       </div>
-      <label for="range" class="fine" hidden>Time range</label>
       <select id="range" aria-label="Time range"></select>
+      <span class="fullhist" id="fullHist" hidden>Full history</span>
       <button class="btn" id="importBtn" type="button">Import my history</button>
     </div>
-    <nav class="tabs" role="tablist" id="tabs">
-      <button class="tab" role="tab" data-v="overview">Overview</button>
-      <button class="tab" role="tab" data-v="insights">Insights</button>
-      <button class="tab" role="tab" data-v="songs">Songs</button>
-      <button class="tab" role="tab" data-v="artists">Artists</button>
-      <button class="tab" role="tab" data-v="periods">Months &amp; years</button>
-      <button class="tab" role="tab" data-v="patterns">When you listen</button>
-      <button class="tab" role="tab" data-v="sessions">Sessions &amp; repeats</button>
-      <button class="tab" role="tab" data-v="import">Import</button>
-    </nav>
+    <nav class="seg" id="seg" aria-label="Pages in this section"></nav>
   </div>
 </header>
 
@@ -204,6 +214,7 @@ a{color:var(--accent)}
   <div id="notice"></div>
   <div id="view"></div>
 </main>
+<nav class="bottom" id="bottomNav" aria-label="Main"><div class="in"></div></nav>
 <input type="file" id="file" accept=".zip,.json,.html,application/zip,application/json,text/html" hidden>
 <div id="sheet" class="sheet" hidden></div>
 
@@ -221,8 +232,8 @@ const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const hourLabel=h=>h===0?'12a':h<12?h+'a':h===12?'12p':(h-12)+'p';
 
 let DB=null;
-const ST={range:'all',view:'overview',songSort:'plays',artistSort:'plays',songLimit:50,artistLimit:50,q:'',aq:'',year:null,sessAll:false,otd:null,period:null};
-const VIEWS=['overview','insights','songs','artists','periods','patterns','sessions','import'];
+const ST={range:'all',view:'home',last:{},monthsAll:false,songSort:'plays',artistSort:'plays',songLimit:50,artistLimit:50,q:'',aq:'',year:null,sessAll:false,otd:null,period:null};
+const VIEWS=['home','songs','artists','years','onthisday','timeofday','rhythm','sessions','favorites','comebacks','rotation','data'];
 let AGG=null;
 
 /* ---------- Parsing Google Takeout ---------- */
@@ -441,8 +452,8 @@ function vOverview(){
     <div><h3>Artists</h3><div class="big">${fmtN(g.artIdx.length)}</div><div class="sub">${fmtN(g.newArtists.length)} new to you</div></div></div>`;
   const tl=`<div class="panel"><h2>How much you listened over time</h2>${timeline(cb=>{for(let i=g.lo;i<g.hi;i++)cb(DB.t[i],DB.est[i]/60)},g.lo,g.hi,'Listening over time')}<p class="fine">${fmtDate(g.tlo)} – ${fmtDate(g.thi)} · listened on ${fmtN(ld)} days</p><button class="btn ghost more" data-go="periods">Monthly and yearly breakdown</button></div>`;
   const ms=g.sp[ts[0]],ma=g.am[ta[0]];
-  const lists=`<div class="two"><div><h2>Top songs</h2><div class="list">${ts.slice(0,8).map((k,i)=>songRow(k,i,ms,'plays')).join('')}</div><button class="btn ghost more" data-go="songs">All ${fmtN(g.songIdx.length)} songs</button></div>
-    <div><h2>Top artists by minutes</h2><div class="list">${ta.slice(0,8).map((a,i)=>artistRow(a,i,ma,'minutes')).join('')}</div><button class="btn ghost more" data-go="artists">All ${fmtN(g.artIdx.length)} artists</button></div></div>`;
+  const lists=`<div class="two"><div><h2>Top songs</h2><div class="list">${ts.slice(0,5).map((k,i)=>songRow(k,i,ms,'plays')).join('')}</div><button class="btn ghost more" data-go="songs">All ${fmtN(g.songIdx.length)} songs</button></div>
+    <div><h2>Top artists by minutes</h2><div class="list">${ta.slice(0,5).map((a,i)=>artistRow(a,i,ma,'minutes')).join('')}</div><button class="btn ghost more" data-go="artists">All ${fmtN(g.artIdx.length)} artists</button></div></div>`;
   const r0=g.runs[0],ob=g.obsession,b=g.busiest,lg=g.longest;
   const peakH=[...g.hourM].indexOf(Math.max(...g.hourM)),peakD=[...g.wdM].indexOf(Math.max(...g.wdM));
   const so=k=>`<b>${esc(DB.songs[k].title)}</b> by ${esc(DB.artists[DB.songs[k].a])}`;
@@ -455,8 +466,8 @@ function vOverview(){
     `<div class="ins"><h3>Peak listening</h3><div class="v">${DAYS[peakD]}s, ${hourLabel(peakH)}m</div><div class="d"><b>${(100*g.night/g.plays).toFixed(1)}%</b> of plays between midnight and 5am</div></div>`,
     `<div class="ins"><h3>Quick skips</h3><div class="v">${(100*g.skips/g.plays).toFixed(1)}%</div><div class="d"><b>${fmtN(g.skips)}</b> tracks moved on within 30 seconds</div></div>`,
     `<div class="ins"><h3>Replays</h3><div class="v">${(100*(g.plays-g.songIdx.length)/g.plays).toFixed(1)}%</div><div class="d">of plays were songs you'd already heard in this range</div></div>`
-  ].filter(Boolean).join('');
-  return hero+tl+lists+`<div><h2>Highlights</h2><div class="insights">${ins}</div></div>`;
+  ].filter(Boolean).slice(0,6).join('');
+  return hero+exploreCards()+tl+lists+`<div><h2>Highlights</h2><div class="insights">${ins}</div></div>`;
 }
 function vSongs(){
   const g=AGG;if(!g.plays)return emptyRange();
@@ -582,7 +593,8 @@ function vPeriods(){
     sum:p=>`Your biggest month was <b>${esc(p.peak)}</b> with <b>${p.peakV}</b>. You averaged ${p.avg} a month.`});
   const rows=mst.map(({m,st},j)=>{const pv=prevOf(j),ts=st.topS[0],ta=st.topA[0];
     return`<button class="row mrow" data-month="${m.k}"><span class="mname">${esc(monthName(m.k,{month:'short'}))}</span><span style="min-width:0"><div class="t">${ta?esc(DB.artists[ta[0]]):''}</div><div class="a">#1 song: ${ts?esc(DB.songs[ts[0]].title)+' ('+ts[1]+')':''}</div><div class="a">${st.days} days · ${fmtN(st.songs)} songs · ${st.newA.length} new artists</div></span>
-    <span class="stats"><span>${fmtH(st.min*60)}<small>hours</small></span><span class="opt">${fmtN(st.plays)}<small>plays</small></span><span>${deltaTag(st.min,pv&&pv.min,'',true)}<small>vs prior</small></span></span></button>`}).reverse().join('');
+    <span class="stats"><span>${fmtH(st.min*60)}<small>hours</small></span><span class="opt">${fmtN(st.plays)}<small>plays</small></span><span>${deltaTag(st.min,pv&&pv.min,'',true)}<small>vs prior</small></span></span></button>`}).reverse();
+  const rowsHtml=(ST.monthsAll?rows:rows.slice(0,6)).join('')+(rows.length>6?`<button class="btn ghost more" id="monthsAll" type="button">${ST.monthsAll?'Show fewer months':`Show all ${rows.length} months`}</button>`:'');
   // facts
   const byMin=mst.slice().sort((a,b)=>b.st.min-a.st.min),big=byMin[0],quiet=byMin[byMin.length-1];
   const monthsPerArtist=new Map();mst.forEach(({st})=>{for(const a of st.ac.keys())monthsPerArtist.set(a,(monthsPerArtist.get(a)||0)+1)});
@@ -607,10 +619,10 @@ function vPeriods(){
   if(years.length>1){const asc=years.slice().reverse(),yv=asc.map(()=>0);for(let i=0;i<DB.t.length;i++)yv[asc.indexOf(new Date(DB.t[i]).getFullYear())]+=DB.est[i]/60;
     allYears=`<div class="panel"><h2>Year over year</h2>${barChart(yv,asc.map(String),{unit:'min',h:180,label:'Listening per year',sum:p=>`<b>${esc(p.peak)}</b> is your biggest year so far with ${p.peakV}.`})}</div>`}
   return`<div style="display:grid;gap:12px"><h2 style="margin:0">Your ${Y} in music</h2>${chips}</div>${hero}
+  <div><h2>${Y} highlights</h2><div class="insights">${facts}</div></div>
   <div class="panel"><h2>Month by month</h2>${chart}</div>
-  <div><h2>Every month</h2><p class="fine">Newest first. Tap a month for its top songs, top artists and daily listening.</p><div class="list">${rows}</div></div>
   <div class="two"><div><h2>Top 10 songs of ${Y}</h2><div class="list">${topSongsOf(ys,10)}</div></div><div><h2>Top 10 artists of ${Y}</h2><div class="list">${topArtistsOf(ys,10)}</div></div></div>
-  <div><h2>${Y} highlights</h2><div class="insights">${facts}</div></div>${allYears}`;
+  <div><h2>Every month</h2><p class="fine">Newest first. Tap a month for its top songs, top artists and daily listening.</p><div class="list">${rowsHtml}</div></div>${allYears}`;
 }
 function openMonth(k){
   const M=monthRanges(),i=M.findIndex(m=>m.k===k);if(i<0)return;
@@ -630,7 +642,8 @@ function openMonth(k){
   ${st.newA.length?`<div><h3>Artists you heard for the first time</h3><p class="namelist">${st.newA.slice(0,20).map(a=>esc(DB.artists[a])).join(', ')}${st.newA.length>20?` and ${st.newA.length-20} more`:''}</p></div>`:''}`);
 }
 function vImport(){
-  return`<div class="panel how"><h2>Bring in your YouTube Music history</h2>
+  const mine=DB&&!DB.isSample&&DB.t.length?`<div class="panel"><h2>Your history</h2><p class="fine">${fmtN(DB.t.length)} plays from ${fmtDate(DB.t[0])} to ${fmtDate(DB.t[DB.t.length-1])}, imported from ${esc(DB.source||"your Takeout file")}. Import a newer export below anytime to refresh it.</p></div>`:"";
+  return mine+`<div class="panel how"><h2>${DB&&!DB.isSample?"Refresh":"Bring in"} your YouTube Music history</h2>
   <p>YouTube Music has no public API for listening history, so no app can sign in and read it directly. Google does let you export it yourself through Google Takeout, and that export has every play with its date and time. Import it here and every stat on this page becomes yours.</p>
   <ol>
     <li>Open <a href="https://takeout.google.com" target="_blank" rel="noopener">takeout.google.com</a> signed in to the Google account you use for YouTube Music.</li>
@@ -874,6 +887,33 @@ function shareCard(){
   else if(hint)hint.textContent="Sharing isn't available here. Press and hold the image to save it, then share it from your photos.";
 }
 
+const GROUPS=[
+  {id:'home',label:'Home',icon:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',views:[['home','Overview']]},
+  {id:'library',label:'Library',icon:'<path d="M4 5h16M4 10h16M4 15h9M4 20h6"/><circle cx="17.5" cy="17.5" r="3"/>',views:[['songs','Songs'],['artists','Artists']]},
+  {id:'recaps',label:'Recaps',icon:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',views:[['years','Year in review'],['onthisday','On this day']]},
+  {id:'habits',label:'Habits',icon:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',views:[['timeofday','Time of day'],['rhythm','Weekly rhythm'],['sessions','Sessions & repeats']]},
+  {id:'stories',label:'Stories',icon:'<path d="M12 3l2.2 5.6L20 9.5l-4.5 3.8L17 19l-5-3-5 3 1.5-5.7L4 9.5l5.8-.9z"/>',views:[['favorites','Favorites & binges'],['comebacks','Comebacks'],['rotation','Rotation & peaks']]}
+];
+const VIEW_FN={home:()=>vOverview(),songs:()=>vSongs(),artists:()=>vArtists(),years:()=>vPeriods(),onthisday:()=>otdSection(),timeofday:()=>timesSection()||emptyRange(),rhythm:()=>vPatterns(),sessions:()=>vSessions(),favorites:()=>kindsSection(),comebacks:()=>comebackSection(),rotation:()=>lifecycleSection(),data:()=>vImport()};
+const RANGED=new Set(['home','songs','artists','timeofday','rhythm','sessions']);
+const ALIAS={overview:'home',periods:'years',patterns:'rhythm',insights:'onthisday',import:'data'};
+const groupOf=v=>(GROUPS.find(g=>g.views.some(([id])=>id===v))||{id:null}).id;
+function exploreCards(){
+  const g=AGG;if(!g.plays)return'';
+  const L=buildLife();let cbs=0;L.song.forEach(x=>{if(comeback(x,8,5))cbs++});
+  const P=PERIODS.map(()=>0);for(let h=0;h<24;h++)P[periodOf(h)]+=g.hourM[h];const pn=PERIODS[P.indexOf(Math.max(...P))].name.toLowerCase();
+  const tEnd=DB.t[DB.t.length-1],yNow=new Date(tEnd).getFullYear();let yMin=0;for(let i=lowerBound(DB.t,new Date(yNow,0,1).getTime());i<DB.t.length;i++)yMin+=DB.est[i]/60;
+  const yrs=yNow-new Date(DB.t[0]).getFullYear(),K=artistKinds();
+  const card=(to,k,v,d)=>`<button class="xcard" type="button" data-go="${to}"><span class="k">${k}</span><span class="v">${v}</span><span class="d">${d}</span></button>`;
+  return`<div><h2>Explore</h2><div class="explore">
+  ${card('years','Year in review',`${yNow}: ${fmtH(yMin*60)} hours`,'Month by month, top songs and highlights')}
+  ${card('onthisday','On this day',yrs?`${yrs} ${yrs===1?'year':'years'} of memories`:'Fills in after a year','What you played on this date before')}
+  ${card('timeofday','Time of day',`Mostly a${/^[aeiou]/.test(pn)?'n':''} ${pn} listener`,'Your late-night, morning and evening songs')}
+  ${card('favorites','Favorites & binges',`${K.fav.length} longtime favorites`,`and ${K.binge.length} quick binges`)}
+  ${card('comebacks','Comebacks',`${cbs} ${cbs===1?'song':'songs'} you came back to`,'Old favorites you rediscovered')}
+  ${card('sessions','Sessions',`${fmtN(g.sessions)} listening sessions`,'Longest sessions and repeat streaks')}
+  </div></div>`;
+}
 const emptyRange=()=>`<div class="panel"><h2>No plays in this range</h2><p class="fine">Pick a wider time range at the top.</p></div>`;
 
 /* ---------- Detail sheets ---------- */
@@ -919,15 +959,18 @@ function rangeOptions(){
 }
 function render(){
   AGG=aggregate();
-  document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===ST.view));
+  if(ALIAS[ST.view])ST.view=ALIAS[ST.view];if(!VIEWS.includes(ST.view))ST.view='home';
+  const gid=groupOf(ST.view),grp=GROUPS.find(g=>g.id===gid);if(gid)ST.last[gid]=ST.view;
+  $('#bottomNav .in').innerHTML=GROUPS.map(g=>`<button type="button" data-g="${g.id}"${g.id===gid?' aria-current="page"':''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${g.icon}</svg><span>${g.label}</span></button>`).join('');
+  $('#seg').innerHTML=grp&&grp.views.length>1?grp.views.map(([id,l])=>`<button type="button" data-v="${id}"${id===ST.view?' aria-current="page"':''}>${l}</button>`).join(''):'';
+  const ranged=RANGED.has(ST.view);$('#range').hidden=!ranged;$('#fullHist').hidden=ranged||ST.view==='data';
+  $('#importBtn').textContent=DB.isSample?'Import my history':'Your data';
   $('#src').textContent=DB.isSample?'Sample data · invented artists':`${DB.source||'Your history'} · ${fmtN(DB.t.length)} plays`;
-  $('#notice').innerHTML=DB.isSample&&ST.view!=='import'?`<div class="notice"><span class="grow"><b>You're looking at sample data.</b> Import your Google Takeout export to see your own YouTube Music history.</span><button class="btn" data-go="import" type="button">Show me how</button></div>`:'';
-  const fn={overview:vOverview,insights:vInsights,songs:vSongs,artists:vArtists,periods:vPeriods,patterns:vPatterns,sessions:vSessions,import:vImport}[ST.view]||vOverview;
-  $('#range').disabled=ST.view==='periods';$('#range').title=ST.view==='periods'?'Months & years uses your full history':'';
-  $('#view').innerHTML=`<section class="view">${fn()}</section>`;
+  $('#notice').innerHTML=DB.isSample&&ST.view==='home'?`<div class="notice"><span class="grow"><b>You're looking at sample data.</b> Import your Google Takeout export to see your own YouTube Music history.</span><button class="btn" data-go="data" type="button">Show me how</button></div>`:'';
+  $('#view').innerHTML=`<section class="view">${VIEW_FN[ST.view]()}</section>`;
   const ss=$('#songSort');if(ss)ss.value=ST.songSort;const as=$('#artistSort');if(as)as.value=ST.artistSort;
 }
-function go(v){ST.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();window.scrollTo(0,0)}
+function go(v){v=ALIAS[v]||v;ST.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();window.scrollTo(0,0)}
 function setStatus(html,isErr){$('#notice').innerHTML=`<div class="notice${isErr?' err':''}"><span class="grow">${html}</span></div>`}
 
 async function handleFile(file){
@@ -956,7 +999,7 @@ document.addEventListener('click',e=>{
     box.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));
     if(tip.dataset.i!==undefined){const b=box.querySelectorAll('.bar')[+tip.dataset.i];if(b)b.classList.add('sel')}else tip.classList.add('sel');
     return}
-  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-card],#cardShare,[data-go],[data-v],#importBtn,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
+  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-card],#cardShare,[data-go],[data-g],[data-v],#importBtn,#monthsAll,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
   if(e.target.id==='sheet'){closeSheet();return}
   if(!el)return;
   if(el.hasAttribute('data-close'))return closeSheet();
@@ -970,8 +1013,10 @@ document.addEventListener('click',e=>{
   if(el.dataset.song!==undefined)return openSong(+el.dataset.song);
   if(el.dataset.artist!==undefined)return openArtist(+el.dataset.artist);
   if(el.dataset.go){closeSheet();return go(el.dataset.go)}
+  if(el.dataset.g){const g=GROUPS.find(x=>x.id===el.dataset.g);return go(ST.last[g.id]||g.views[0][0])}
   if(el.dataset.v)return go(el.dataset.v);
-  if(el.id==='importBtn')return DB.isSample?go('import'):$('#file').click();
+  if(el.id==='monthsAll'){ST.monthsAll=!ST.monthsAll;return render()}
+  if(el.id==='importBtn')return go('data');
   if(el.id==='pick')return $('#file').click();
   if(el.id==='moreSongs'){ST.songLimit+=100;return render()}
   if(el.id==='moreArtists'){ST.artistLimit+=100;return render()}
@@ -993,11 +1038,11 @@ let qt;document.addEventListener('input',e=>{
 ['dragover','dragenter'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();const d=$('#drop');if(d)d.classList.add('over')}));
 ['dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{const d=$('#drop');if(d)d.classList.remove('over')}));
 document.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)handleFile(f)});
-window.addEventListener('hashchange',()=>{const v=location.hash.slice(1);if(v&&v!==ST.view&&VIEWS.includes(v)){ST.view=v;render()}});
+window.addEventListener('hashchange',()=>{const v=ALIAS[location.hash.slice(1)]||location.hash.slice(1);if(v&&v!==ST.view&&VIEWS.includes(v)){ST.view=v;render()}});
 
 /* ---------- Boot ---------- */
 (function(){
-  const h=location.hash.slice(1);if(VIEWS.includes(h))ST.view=h;
+  const h=ALIAS[location.hash.slice(1)]||location.hash.slice(1);if(VIEWS.includes(h))ST.view=h;
   DB=build(sampleEntries(),{isSample:true});rangeOptions();render();
   loadDB().then(saved=>{if(saved&&saved.t&&saved.t.length){DB=finalize({...saved,isSample:false});rangeOptions();render()}});
 })();
