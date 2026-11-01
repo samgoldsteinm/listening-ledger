@@ -167,6 +167,9 @@ a{color:var(--accent)}
 .ptile:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
 .ptile .pn{font-weight:600;font-size:13px}.ptile .pt{font:11px var(--mono);color:var(--muted)}.ptile .pv{font:700 22px var(--display);font-variant-numeric:tabular-nums}
 .pill{display:inline-block;font:600 12px var(--body);background:var(--accent-soft);color:var(--ink);border-radius:999px;padding:3px 10px;margin-top:6px}
+.cardwrap{display:grid;justify-items:center}
+.cardwrap img{display:block;width:100%;max-width:340px;height:auto;border-radius:14px;border:1px solid var(--line)}
+.cardbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .otd .v{font-size:19px}
 @media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .15s}}
 </style>
@@ -472,7 +475,7 @@ function vArtists(){
   const f=ST.artistSort==='minutes'?a=>g.am[a]:ST.artistSort==='songs'?a=>g.aSongs[a]:a=>g.ap[a],max=list.length?f(list[0]):1;
   return`<div><h2>Every artist, ranked</h2><div class="controls"><input type="search" id="aq" placeholder="Search artists" value="${esc(ST.aq)}" aria-label="Search artists">
   <select id="artistSort" aria-label="Sort artists"><option value="plays">Most plays</option><option value="minutes">Most minutes</option><option value="songs">Most different songs</option></select></div>
-  <p class="fine">${fmtN(list.length)} artists.</p>
+  <p class="fine">${fmtN(list.length)} artists. Tap one for details and a shareable recap card.</p>
   <div class="list">${list.slice(0,ST.artistLimit).map((a,i)=>artistRow(a,i,max,ST.artistSort)).join('')}</div>
   ${list.length>ST.artistLimit?`<button class="btn ghost more" id="moreArtists">Show 100 more</button>`:''}</div>`;
 }
@@ -775,6 +778,102 @@ function artistTag(a){
   return tags.map(x=>`<span class="pill">${esc(x)}</span>`).join(' ');
 }
 
+/* ---------- Shareable artist recap cards (1080×1920 story format) ---------- */
+const CDF='"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif',CBF='"Instrument Sans", "Segoe UI", system-ui, sans-serif',CMF='"JetBrains Mono", ui-monospace, Menlo, monospace';
+let CARD=null;
+function rangeLabel(){const r=ST.range;return r==='all'?'All-time recap':r==='30'?'Last 30 days':r==='90'?'Last 90 days':r==='365'?'Last 12 months':r+' recap'}
+function cardRR(x,X,Y,w,h,r){x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath()}
+function cardEll(x,s,w){if(x.measureText(s).width<=w)return s;while(s.length>1&&x.measureText(s+'…').width>w)s=s.slice(0,-1);return s.trimEnd()+'…'}
+function cardSpacing(x,px){if('letterSpacing' in x)x.letterSpacing=px+'px'}
+function cardName(x,name,maxW){
+  for(let size=150;size>=72;size-=6){x.font=`800 ${size}px ${CDF}`;const lines=[];let cur='';
+    for(const w of name.split(/\s+/)){const t=cur?cur+' '+w:w;if(x.measureText(t).width<=maxW)cur=t;else{if(cur)lines.push(cur);cur=w}}
+    if(cur)lines.push(cur);if(lines.length<=3&&lines.every(l=>x.measureText(l).width<=maxW))return{size,lines}}
+  x.font=`800 72px ${CDF}`;return{size:72,lines:[cardEll(x,name,maxW)]};
+}
+function cardRecord(x,cx,cy,R,share){
+  let g=x.createRadialGradient(cx-R*.3,cy-R*.3,R*.1,cx,cy,R);g.addColorStop(0,'#2b2b2b');g.addColorStop(1,'#0b0b0b');
+  x.fillStyle=g;x.beginPath();x.arc(cx,cy,R,0,Math.PI*2);x.fill();
+  x.strokeStyle='rgba(255,255,255,.07)';x.lineWidth=2;for(let r=R*.92;r>R*.42;r-=R*.07){x.beginPath();x.arc(cx,cy,r,0,Math.PI*2);x.stroke()}
+  g=x.createRadialGradient(cx-R*.1,cy-R*.12,4,cx,cy,R*.36);g.addColorStop(0,'#ff3030');g.addColorStop(1,'#c40000');
+  x.fillStyle=g;x.beginPath();x.arc(cx,cy,R*.34,0,Math.PI*2);x.fill();
+  x.fillStyle='#0b0b0b';x.beginPath();x.arc(cx,cy,R*.055,0,Math.PI*2);x.fill();
+  x.lineCap='round';x.lineWidth=22;x.strokeStyle='#1f1f1f';x.beginPath();x.arc(cx,cy,R+44,0,Math.PI*2);x.stroke();
+  x.strokeStyle='#FF0000';x.beginPath();x.arc(cx,cy,R+44,Math.PI/2,Math.PI/2+Math.PI*2*Math.max(.03,Math.min(1,share)));x.stroke();x.lineCap='butt';
+}
+async function drawArtistCard(a){
+  if(document.fonts&&document.fonts.load)await Promise.all([`800 100px ${CDF}`,`600 40px ${CBF}`,`600 36px ${CMF}`].map(f=>document.fonts.load(f).catch(()=>{})));
+  const g=AGG,W=1080,H=1920,L=80,RW=W-2*L,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  const RED='#FF0000',INK='#FFFFFF',MUT='#9A9A9A',TRACK='#232323';
+  // data
+  const songs=g.songIdx.filter(k=>DB.songs[k].a===a).sort((p,q)=>g.sp[q]-g.sp[p]||g.sm[q]-g.sm[p]);
+  const rank=sortedArtists('minutes').indexOf(a)+1,share=g.am[a]/g.total;
+  const life=buildLife(),am=life.am[a];let peakM=null,pc=0;for(const[k,v]of am)if(v>pc){pc=v;peakM=k}
+  const K=artistKinds(),fav=K.fav.find(f=>f.a===a),bin=K.binge.find(b=>b.a===a),cb=comeback(life.artist[a],15,10);
+  const tag=fav?`Longtime favorite · ${fav.active} months`:bin?`Binged in ${monthName(bin.pm,{month:'short',year:'numeric'})}`:cb?`Rediscovered after ${cb.gap} weeks`:'';
+  // background
+  let bg=x.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#1c0404');bg.addColorStop(.42,'#050505');bg.addColorStop(1,'#030303');x.fillStyle=bg;x.fillRect(0,0,W,H);
+  cardRecord(x,W-150,290,290,share);
+  // header
+  x.textBaseline='alphabetic';x.textAlign='left';
+  x.fillStyle=INK;x.font=`700 30px ${CBF}`;cardSpacing(x,5);x.fillText('LISTENING LEDGER',L,130);
+  x.fillStyle=RED;x.font=`600 28px ${CBF}`;x.fillText(rangeLabel().toUpperCase(),L,176);cardSpacing(x,0);
+  // artist name
+  const nm=cardName(x,DB.artists[a],RW);let y=790;x.fillStyle=INK;x.font=`800 ${nm.size}px ${CDF}`;
+  nm.lines.forEach((l,i)=>x.fillText(l,L,y+i*nm.size*1.02));y+=(nm.lines.length-1)*nm.size*1.02+nm.size*.3;
+  // tag pill
+  if(tag){x.font=`600 30px ${CBF}`;const tw=x.measureText(tag).width+48;x.fillStyle='#3b0a0a';cardRR(x,L,y+20,tw,58,29);x.fill();x.fillStyle=INK;x.fillText(tag,L+24,y+60);y+=110}else y+=40;
+  // stats
+  const stats=[[fmtH(g.am[a]),'hours'],[fmtN(g.ap[a]),'plays'],[fmtN(g.aSongs[a]),'songs']];
+  let ss=96;x.font=`800 ${ss}px ${CDF}`;while(ss>56&&stats.some(([v])=>x.measureText(v).width>RW/3-64)){ss-=4;x.font=`800 ${ss}px ${CDF}`}
+  stats.forEach(([v,lab],i)=>{const X=L+i*(RW/3);x.fillStyle=INK;x.font=`800 ${ss}px ${CDF}`;x.fillText(v,X,y+90);x.fillStyle=MUT;x.font=`500 30px ${CBF}`;x.fillText(lab,X,y+134)});
+  y+=200;
+  x.fillStyle=INK;x.font=`600 34px ${CBF}`;x.fillText(`#${rank} artist · ${share<.001?'under 0.1':(100*share).toFixed(1)}% of your listening`,L,y+10);y+=50;
+  x.fillStyle=TRACK;x.fillRect(L,y,RW,2);y+=66;
+  // top songs
+  const sparkH=230,footer=130,n=Math.max(0,Math.min(5,songs.length,Math.floor((H-footer-y-70)/86)));
+  if(n){x.fillStyle=MUT;x.font=`700 26px ${CBF}`;cardSpacing(x,4);x.fillText('TOP SONGS',L,y);cardSpacing(x,0);y+=64;
+    const maxP=g.sp[songs[0]];
+    songs.slice(0,n).forEach((k,i)=>{x.fillStyle=RED;x.font=`600 34px ${CMF}`;x.fillText(String(i+1),L,y);
+      x.textAlign='right';x.fillStyle=INK;x.font=`600 34px ${CMF}`;const pl=fmtN(g.sp[k]);x.fillText(pl,W-L,y);const pw=x.measureText(pl).width;x.textAlign='left';
+      x.fillStyle=INK;x.font=`600 40px ${CBF}`;x.fillText(cardEll(x,DB.songs[k].title,RW-60-pw-30),L+60,y);
+      x.fillStyle=TRACK;cardRR(x,L+60,y+20,RW-60,8,4);x.fill();x.fillStyle=RED;cardRR(x,L+60,y+20,Math.max(8,(RW-60)*g.sp[k]/maxP),8,4);x.fill();y+=86});
+    y+=10}
+  // plays by month in this range
+  const mm=new Map();for(let i=g.lo;i<g.hi;i++)if(DB.songs[DB.s[i]].a===a){const d=new Date(DB.t[i]),k=d.getFullYear()*12+d.getMonth();mm.set(k,(mm.get(k)||0)+1)}
+  if(mm.size>=2&&y+sparkH<=H-footer){
+    const ks=[...mm.keys()],k1=Math.max(...ks),k0=Math.max(Math.min(...ks),k1-23),vals=[];for(let k=k0;k<=k1;k++)vals.push(mm.get(k)||0);
+    x.fillStyle=MUT;x.font=`700 26px ${CBF}`;cardSpacing(x,4);x.fillText('PLAYS BY MONTH',L,y+20);cardSpacing(x,0);
+    const top=y+50,bh=120,bw=RW/vals.length,mx=Math.max(...vals),pk=vals.indexOf(mx);
+    vals.forEach((v,i)=>{const h=Math.max(v?6:2,bh*v/mx);x.fillStyle=i===pk?RED:(v?'#7a1414':TRACK);cardRR(x,L+i*bw+bw*.12,top+bh-h,bw*.76,h,Math.min(6,bw*.3));x.fill()});
+    x.fillStyle=MUT;x.font=`500 24px ${CMF}`;x.fillText(monthName(k0,{month:'short',year:'2-digit'}),L,top+bh+40);
+    x.textAlign='right';x.fillText(monthName(k1,{month:'short',year:'2-digit'}),W-L,top+bh+40);x.textAlign='left';
+  }
+  // footer
+  x.fillStyle=TRACK;x.fillRect(L,H-footer,RW,2);
+  x.fillStyle=MUT;x.font=`500 26px ${CBF}`;
+  x.fillText(`First played ${fmtShortD(new Date(DB.aFirst[a]))}`,L,H-footer+62);
+  x.textAlign='right';if(peakM!=null)x.fillText(`Peak month: ${monthName(peakM,{month:'short',year:'numeric'})}`,W-L,H-footer+62);x.textAlign='left';
+  return new Promise(res=>c.toBlob(b=>res(b),'image/png'));
+}
+async function openCard(a){
+  const name=DB.artists[a],file=(name.replace(/[^\w]+/g,'-').replace(/^-|-$/g,'')||'artist')+'-recap.png';
+  showSheet(`<div class="head"><div><h3>Recap card · ${esc(rangeLabel())}</h3><h2>${esc(name)}</h2></div><button class="close" aria-label="Close" data-close>×</button></div>
+  <div class="cardwrap"><p class="fine" id="cardStatus">Drawing your card…</p><img id="cardImg" alt="Recap card for ${esc(name)}" hidden></div>
+  <div class="cardbtns" id="cardBtns" hidden><button class="btn" id="cardShare" type="button">Share</button><a class="btn ghost" id="cardSave" download="${esc(file)}">Save image</a></div>
+  <p class="fine" id="cardHint" style="text-align:center">Press and hold the image to save it to your photos. Change the time range at the top to make a card for a different period.</p>`);
+  try{
+    const blob=await drawArtistCard(a);if(CARD&&CARD.url)URL.revokeObjectURL(CARD.url);
+    const url=URL.createObjectURL(blob);CARD={blob,url,file,name};
+    const img=$('#cardImg');if(!img)return;img.src=url;img.hidden=false;$('#cardStatus').hidden=true;$('#cardSave').href=url;$('#cardBtns').hidden=false;
+  }catch(err){const s=$('#cardStatus');if(s)s.textContent="The card couldn't be drawn on this device. Try again, or try from another browser."}
+}
+function shareCard(){
+  if(!CARD)return;const f=new File([CARD.blob],CARD.file,{type:'image/png'}),hint=$('#cardHint');
+  if(navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],title:`${CARD.name} · Listening Ledger`}).catch(()=>{})}
+  else if(hint)hint.textContent="Sharing isn't available here. Press and hold the image to save it, then share it from your photos.";
+}
+
 const emptyRange=()=>`<div class="panel"><h2>No plays in this range</h2><p class="fine">Pick a wider time range at the top.</p></div>`;
 
 /* ---------- Detail sheets ---------- */
@@ -801,7 +900,7 @@ function openSong(k){
 function openArtist(a){
   const g=AGG,{lo,hi}=g,songs=g.songIdx.filter(k=>DB.songs[k].a===a).sort((x,y)=>g.sp[y]-g.sp[x]);
   const rank=sortedArtists('plays').indexOf(a)+1,max=g.sp[songs[0]]||1;
-  showSheet(`<div class="head"><div><h3>Artist · #${rank} in this range</h3><h2>${esc(DB.artists[a])}</h2>${artistTag(a)}</div><button class="close" aria-label="Close" data-close>×</button></div>
+  showSheet(`<div class="head"><div><h3>Artist · #${rank} in this range</h3><h2>${esc(DB.artists[a])}</h2>${artistTag(a)}<div style="margin-top:10px"><button class="btn" type="button" data-card="${a}">Make a recap card</button></div></div><button class="close" aria-label="Close" data-close>×</button></div>
   <div class="kv"><div><b>${fmtN(g.ap[a])}</b><span>plays</span></div><div><b>${fmtN(g.am[a]/60)}</b><span>minutes listened</span></div><div><b>${fmtN(songs.length)}</b><span>different songs</span></div>
   <div><b>${(100*g.ap[a]/g.plays).toFixed(1)}%</b><span>of all your plays</span></div><div><b>${fmtDate(DB.aFirst[a])}</b><span>first ever play</span></div><div><b>${fmtN(songs.reduce((s,k)=>s+g.ssk[k],0))}</b><span>quick skips</span></div></div>
   <div><h3>Plays per month</h3>${monthlyFor(i=>DB.songs[DB.s[i]].a===a,lo,hi)}</div>
@@ -857,7 +956,7 @@ document.addEventListener('click',e=>{
     box.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));
     if(tip.dataset.i!==undefined){const b=box.querySelectorAll('.bar')[+tip.dataset.i];if(b)b.classList.add('sel')}else tip.classList.add('sel');
     return}
-  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-go],[data-v],#importBtn,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
+  const el=e.target.closest('[data-close],[data-song],[data-artist],[data-month],[data-year],[data-session],[data-period],[data-card],#cardShare,[data-go],[data-v],#importBtn,#pick,#moreSongs,#moreArtists,#clear,#sessAll');
   if(e.target.id==='sheet'){closeSheet();return}
   if(!el)return;
   if(el.hasAttribute('data-close'))return closeSheet();
@@ -865,6 +964,8 @@ document.addEventListener('click',e=>{
   if(el.dataset.year!==undefined){ST.year=+el.dataset.year;return render()}
   if(el.dataset.session!==undefined)return openSession(+el.dataset.session);
   if(el.dataset.period!==undefined){ST.period=+el.dataset.period;return render()}
+  if(el.dataset.card!==undefined)return openCard(+el.dataset.card);
+  if(el.id==='cardShare')return shareCard();
   if(el.id==='sessAll'){ST.sessAll=!ST.sessAll;render();if(!ST.sessAll){const p=$('#sessAll');if(p)p.scrollIntoView({block:'center'})}return}
   if(el.dataset.song!==undefined)return openSong(+el.dataset.song);
   if(el.dataset.artist!==undefined)return openArtist(+el.dataset.artist);
